@@ -39,11 +39,15 @@
 #define GB_UART_VERSION_MAJOR   0
 #define GB_UART_VERSION_MINOR   1
 
+#define FLAGS_DEVICE_INUSE   0x01
+#define FLAGS_STATUS_CHANGE  0x02
+#define FLAGS_DATA_COMEIN    0x04
+
 struct gb_uart_info {
     uint16_t        cport;
     uint32_t        flags;
     pthread_t       uart_thread;
-    
+    sem_t           uart_sem;
     struct device   *dev;
 };
 
@@ -51,14 +55,78 @@ struct gb_uart_info *info;
 
 void gb_uart_ms_ls_callback(void)
 {
+    info->flags |= FLAGS_STATUS_CHANGE;
+    sem_post(&info->uart_sem);
+}
+
+void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
+{
+    info->flags |= FLAGS_DATA_COMEIN;
+    sem_post(&info->uart_sem);
+
+    /* switch free buffer to start new receiving */
+
+    
     
 }
 
-void gb_uart_rx_callback()
+void gb_uart_ms_ls_proc(void)
 {
+    struct gb_operation *operation;
+    struct gb_uart_serial_state_request *request;
+    int ret;
+    uint16_t data = 0;
+    uint8_t ms_data, ls_data;
+    
+    operation = gb_operation_create(info->cport,
+                                    GB_UART_TYPE_SERIAL_STATE,
+                                    sizeof(*request));
+    
+    request = (struct gb_uart_set_control_line_state_request *)
+                    gb_operation_get_request_payload(operation);
 
+    device_uart_get_modem_status(info->dev, &ms_data);
+    device_uart_get_line_status(info->dev, &ls_data);
+    
+    if (ms_data & MSR_DCD) {
+        data |= GB_UART_CTRL_DCD;
+    }
+    if (ms_data & MSR_DSR) {
+        data |= GB_UART_CTRL_DSR;
+    }
+    if (ls_data & LSR_BI) {
+        data |= GB_UART_CTRL_BRK;
+    }
+    if (ms_data & MSR_RI) {
+        data |= GB_UART_CTRL_RI;
+    }
+    if (ls_data & LSR_FE) {
+        data |= GB_UART_CTRL_FRAMING;
+    }
+    if (ls_data & LSR_PE) {
+        data |= GB_UART_CTRL_PARITY;
+    }
+    if (ls_data & LSR_OE) {
+        data |= GB_UART_CTRL_OVERRUN;
+    }
+    
+    request->control = 0;
+    request->data = data;
+    
+    ret = gb_operation_send_request(operation, NULL, false);
+    if (ret)
+        lldbg("--- Can't report event : %d\n", ret); /* XXX */
+
+    gb_operation_destroy(operation);    
 }
 
+void gb_uart_rx_proc(void)
+{
+    struct gb_operation *operation;
+
+    
+    
+}
 
 /*
  *  This thread for pumping receiving data to peer.
@@ -70,8 +138,17 @@ static void *gb_uart_thread(void *data)
     int ret;
 
     while (1) {
-        msglen = mq_receive(priv->mq, &msg, sizeof(msg), &prio);
-        
+        sem_wait(&info->uart_sem);
+
+        if (info->flags & FLAGS_STATUS_CHANGE) {
+            info->flags &= ~FLAGS_STATUS_CHANGE;
+            gb_uart_ms_ls_proc();
+        }
+
+        if (info->flags & FLAGS_DATA_COMEIN) {
+            info->flags &= ~FLAGS_STATUS_CHANGE;
+            gb_uart_rx_proc();
+        }
     }
 
     /* NOTREACHED */
@@ -109,7 +186,7 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
                   gb_operation_get_request_payload(operation);
 
     ret = device_uart_start_transmitter(info->dev, request->data,
-                                        request->size, 0, 0, &sent, null);
+                                        request->size, 0, 0, &sent, NULL);
     if (ret) {
         
     }
@@ -205,7 +282,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     }
 
     ret = device_uart_set_modem_ctrl(info->dev, &modem_ctrl);
-    if () {
+    if (ret) {
         
     }
 
@@ -219,12 +296,12 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
 {
     int ret;
     uint8_t modem_ctrl;
-    struct gb_uart_set_control_line_state_request *request;
+    struct gb_uart_set_break_request *request;
     
-    request = (struct gb_uart_set_control_line_state_request *)
+    request = (struct gb_uart_set_break_request *)
                   gb_operation_get_request_payload(operation);
 
-    ret = device_uart_set_break(request->state);
+    ret = device_uart_set_break(info->dev, request->state);
     if (ret) {
         
     }
@@ -246,7 +323,7 @@ static uint8_t gb_uart_serial_state(struct gb_operation *operation)
  */
 static int gb_uart_init(unsigned int cport)
 {
-    struct gb_uart_dev_info *dev_info;
+    int ret;
     struct gb_uart_info *info;
     unsigned int i;
 
@@ -254,18 +331,20 @@ static int gb_uart_init(unsigned int cport)
     if (!info)
         return -ENOMEM;
 
-lldbg("GB uart info struct: 0x%08p\n", info); /* XXX */
+    lldbg("GB uart info struct: 0x%08p\n", info); /* XXX */
 
-    info->cport = cport
+    info->cport = cport;
 
+    ret = sem_init(&info->uart_sem, 0, 0);
+    
     ret = pthread_create(&info->uart_thread, NULL, gb_uart_thread, info);    
 
     if (ret) {
         ret = -ret;
-        goto err_free_wd_info;
+        //goto err_free_wd_info;
     }
     
-    info->dev = device_open(dev_info->dev_class, dev_info->dev_id);
+    info->dev = device_open(DEVICE_TYPE_UART_HW, 0);
     if (!info->dev) {
         ret = -EIO;
         goto err_kill_pthread;
@@ -274,9 +353,9 @@ lldbg("GB uart info struct: 0x%08p\n", info); /* XXX */
     return 0;
 
 err_kill_pthread:
-    pthread_kill(info->rx_thread, SIGKILL);
+    //pthread_kill(info->uart_thread, SIGKILL);
     
-    return rel;
+    return ret;
 }
 
 static int gb_uart_exit(unsigned int cport)
@@ -303,6 +382,6 @@ struct gb_driver uart_driver = {
 
 void gb_uart_register(int cport)
 {
-lldbg("gb_uart_register: cport %d\n", cport);
+    lldbg("gb_uart_register: cport %d\n", cport);
     gb_register_driver(cport, &uart_driver);
 }

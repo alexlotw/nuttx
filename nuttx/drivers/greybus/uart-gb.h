@@ -100,7 +100,8 @@ struct gb_uart_set_break_request {
 };
 
 struct gb_uart_serial_state_request {
-	__u16	control;
+	__le16	control;
+    __le16	data;
 };
 
 #endif /* __UART_GB_H__ */
