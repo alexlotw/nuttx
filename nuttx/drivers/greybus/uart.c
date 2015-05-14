@@ -43,15 +43,50 @@
 #define FLAGS_STATUS_CHANGE  0x02
 #define FLAGS_DATA_COMEIN    0x04
 
+struct list_note {
+    uint8_t *rx_buffer;
+    int status;
+    struct list_note *next;
+};
+
 struct gb_uart_info {
     uint16_t        cport;
     uint32_t        flags;
     pthread_t       uart_thread;
     sem_t           uart_sem;
+    /* circular linked list data */
+    struct list_note *head;
+    struct list_note *tail;
+    struct list_note *available;
+    struct list_note *used;
+    struct list_note *remainder
+    /* device */
     struct device   *dev;
 };
 
 struct gb_uart_info *info;
+
+int add_list_note(list_note *note)
+{
+    if (info->head == NULL) {
+        info->head = note;
+        info->tail = note;
+    }
+    else {
+        info->tail.next = note;
+        note->next = info->head;
+    }
+}
+
+list_note *get_available_note(void)
+{
+    
+}
+
+list_note *get_used_note(void)
+{
+    
+}
 
 void gb_uart_ms_ls_callback(void)
 {
@@ -65,9 +100,6 @@ void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
     sem_post(&info->uart_sem);
 
     /* switch free buffer to start new receiving */
-
-    
-    
 }
 
 void gb_uart_ms_ls_proc(void)
@@ -145,10 +177,11 @@ static void *gb_uart_thread(void *data)
             gb_uart_ms_ls_proc();
         }
 
-        if (info->flags & FLAGS_DATA_COMEIN) {
+        /* Don't use flag for checking data come in, use link_list */
+        /*if (info->flags & FLAGS_DATA_COMEIN) {
             info->flags &= ~FLAGS_STATUS_CHANGE;
             gb_uart_rx_proc();
-        }
+        }*/
     }
 
     /* NOTREACHED */
