@@ -53,6 +53,7 @@ struct device_driver_ops {
     void    (*close)(struct device *dev);
     union {
         struct device_pll_type_ops     *pll;
+        struct device_uart_type_ops    *uart;
     } type_ops;
 };
 

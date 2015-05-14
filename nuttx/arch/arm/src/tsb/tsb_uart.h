@@ -28,9 +28,9 @@
  * @author Alex Lo
  */
 
-#include <nuttx/device.h>
+#ifndef __ARCH_ARM_TSB_TSB_UART_H
+#define __ARCH_ARM_TSB_TSB_UART_H
 
-void tsb_driver_register(void)
-{
-    device_register_driver(&tsb_uart_driver);
-}
+
+
+#endif /* __ARCH_ARM_TSB_TSB_UART_H */
