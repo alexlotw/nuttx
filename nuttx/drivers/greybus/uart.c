@@ -43,18 +43,24 @@
 #define FLAGS_STATUS_CHANGE  0x02
 #define FLAGS_DATA_COMEIN    0x04
 
-struct list_note {
-    uint8_t *rx_buffer;
-    int status;
-    struct list_note *next;
+#define NODE_STATUS_AVAIL       0x00
+#define NODE_STATUS_INUSE       0x01
+
+struct list_node {
+    struct gb_operation                 *operation;
+    struct gb_uart_receive_data_request *request;
+    uint8_t                             *buffer;
+    int                                 status;
+    struct list_node                    *next;
 };
 
-struct list_notes_cb {
-    struct list_note *head;
-    struct list_note *tail;
-    struct list_note *available;
-    struct list_note *used;
-    struct list_note *remainder
+struct list_node_cb {
+    struct list_node    *head;
+    struct list_node    *tail;
+    struct list_node    *available;
+    struct list_node    *used;
+    int                 total;
+    int                 remainder;
 }
 
 struct gb_uart_info {
@@ -63,38 +69,74 @@ struct gb_uart_info {
     pthread_t       uart_thread;
     sem_t           uart_sem;
     /* ms_ls status data */
-    struct gb_operation                 *state_operation;
-    struct gb_uart_serial_state_request *state_request;
+    struct gb_operation *operation;
+    struct gb_uart_serial_state_request *request;
     uint16_t        last_serial_state;
     /* receiving op data */
-    list_notes_cb   notes_cb
+    list_node_cb   node_cb
     /* device */
     struct device   *dev;
 };
 
 struct gb_uart_info *info;
 
-int list_add_note(list_note *note)
+int list_add_node(struct list_node_cb node_cb, list_note *note)
 {
-    if (info->head == NULL) {
-        info->head = note;
-        info->tail = note;
+    if (node_cb->head == NULL) {
+        node_cb->head = note;
+        note->next = note;
+        node_cb->tail = note;
+        note_cb->avail = note;
+        note_cb->used = NULL;
+        note_cb->total = 1;
+        note_cb->remainder = 1;
     }
     else {
-        info->tail.next = note;
-        note->next = info->head;
+        node_cb->tail.next = note;
+        note->next = node_cb->head;
+        note_cb->total++;
+        note_cb->remainder++;
     }
 }
 
-list_note *list_get_available_note(void)
+/*
+ *  call this funciton will consume the node.
+ */
+struct list_node *list_get_avail_node(struct list_node_cb *node_cb)
 {
-    
+    struct list_node *node;
+
+    if (node_cb->remainder) {
+        return NULL;
+    }
+    else {
+        node = node_cb->available;
+        node->status = NODE_STATUS_INUSE;
+        node_cb->available = node->next;
+        node_cb->remainder--;
+        return node;
+    }
 }
 
-list_note *list_get_used_note(void)
+/*
+ *  call this function will release the node.
+ */
+struct list_node *list_get_used_node(struct list_node_cb *node_cb)
 {
-    
+    struct list_node *node;
+
+    if (node_cb->total == node_cb->remainder) {
+        return NULL;
+    }
+    else {
+        node = node_cb->used;
+        node->status = NODE_STATUS_AVAIL;
+        node_cb->used = node->next;
+        node_cb->remainder++;
+        return node;
+    }
 }
+
 
 void gb_uart_ms_ls_callback(void)
 {
@@ -103,8 +145,12 @@ void gb_uart_ms_ls_callback(void)
 
 void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
 {
+    struct list_node *node;
+    
     sem_post(&info->uart_sem);
 
+    
+    
     /* switch free buffer to start new receiving */
 }
 
@@ -365,9 +411,10 @@ static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 static int gb_uart_init(unsigned int cport)
 {
     int ret;
-    struct gb_uart_info *info;
     unsigned int i;
+    struct gb_uart_info *info;
     struct gb_operation *operation;
+    struct list_node *node;
     
     info = zalloc(sizeof(*info));
     if (!info)
@@ -389,10 +436,27 @@ static int gb_uart_init(unsigned int cport)
                     gb_operation_get_request_payload(operation);
     
 
-    /* operations of receiving */
-    for () {
-        
+    /* create operations of receiving */
+    for (i = 0; i < 5; i++) {
+        operation = gb_operation_create(info->cport,
+                                        GB_UART_TYPE_RECEIVE_DATA,
+                                        sizeof(*request) + 2 + 128);
+        if (operation) {
+            node = (struct list_node *)malloc(list_node);
+            node->operation = operation;
+            node->request = (struct gb_uart_receive_data_request *)
+                                gb_operation_get_request_payload(operation);
+            node->buffer = node->request->data;
+            node->status = NODE_STATUS_AVAIL;
+            list_add_node(node);
+        }
+        else {
+            // do something if error.
+        }
+        // add to the link list.
     }
+
+    
 
     ret = sem_init(&info->uart_sem, 0, 0);
     
