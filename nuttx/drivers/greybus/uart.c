@@ -322,6 +322,10 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
 static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 {
 	
+	int ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
+    if (ret)
+        lldbg("--- Can't report event : %d\n", ret); /* XXX */
+        
 	
 	
     return GB_OP_SUCCESS;
