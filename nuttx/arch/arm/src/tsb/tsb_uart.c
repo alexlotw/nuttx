@@ -51,6 +51,10 @@ struct tsb_uart_info {
     void            (*tx_callback)(uint8_t *buffer, int length, int error);
 };
 
+static int tsb_uart_irq(int irq, void *context)
+{
+}
+
 /*
  * This function is used to set the baud rate, parity, data bit and stop bit
  * settings in the UART controller.
@@ -235,6 +239,10 @@ lldbg("LL uart info struct: 0x%08p\n", info); /* XXX */
     //if (ret != OK)
     //    goto err_irqrestore;
 
+    ret = irq_attach(TSB_IRQ_UART, tsb_uart_irq);
+    if (ret != OK)
+        goto err_irqrestore;
+    
     //tsb_clr_pinshare(TSB_PIN_ETM);
 
     info->dev = dev;

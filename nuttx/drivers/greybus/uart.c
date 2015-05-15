@@ -43,12 +43,19 @@
 #define FLAGS_STATUS_CHANGE  0x02
 #define FLAGS_DATA_COMEIN    0x04
 
+
+
 struct gb_uart_info {
     uint16_t        cport;
     uint32_t        flags;
     pthread_t       uart_thread;
     sem_t           uart_sem;
+	
+    
     struct device   *dev;
+    
+    struct gb_uart_serial_state_request *ms_ls_request;
+    struct gb_operation *ms_ls_operation;
 };
 
 struct gb_uart_info *info;
@@ -70,20 +77,16 @@ void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
     
 }
 
+
+
+
 void gb_uart_ms_ls_proc(void)
 {
-    struct gb_operation *operation;
-    struct gb_uart_serial_state_request *request;
+
     int ret;
     uint16_t data = 0;
     uint8_t ms_data, ls_data;
-    
-    operation = gb_operation_create(info->cport,
-                                    GB_UART_TYPE_SERIAL_STATE,
-                                    sizeof(*request));
-    
-    request = (struct gb_uart_set_control_line_state_request *)
-                    gb_operation_get_request_payload(operation);
+
 
     device_uart_get_modem_status(info->dev, &ms_data);
     device_uart_get_line_status(info->dev, &ls_data);
@@ -110,14 +113,14 @@ void gb_uart_ms_ls_proc(void)
         data |= GB_UART_CTRL_OVERRUN;
     }
     
-    request->control = 0;
-    request->data = data;
+    info->ms_ls_request->control = 0;
+    info->ms_ls_request->data = data;
     
-    ret = gb_operation_send_request(operation, NULL, false);
+    ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
     if (ret)
         lldbg("--- Can't report event : %d\n", ret); /* XXX */
 
-    gb_operation_destroy(operation);    
+   
 }
 
 void gb_uart_rx_proc(void)
@@ -193,6 +196,9 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
     
     return GB_OP_SUCCESS;
 }
+
+
+
 
 /*
  * Receive data from the UART. One or more bytes will be supplied.
@@ -315,8 +321,29 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
  */
 static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 {
+	
+	
+	
     return GB_OP_SUCCESS;
 }
+
+
+static uint8_t gb_uart_serial_state_init(void)
+{
+	
+
+    info->ms_ls_request = (struct gb_uart_serial_state_request *)
+                    gb_operation_get_request_payload(info->ms_ls_operation);
+	 
+
+	info->ms_ls_operation = gb_operation_create(info->cport,
+                                    GB_UART_TYPE_SERIAL_STATE,
+                                    sizeof(*info->ms_ls_request));
+   	
+	
+    return GB_OP_SUCCESS;
+}
+
 
 /*
  * 
@@ -327,6 +354,7 @@ static int gb_uart_init(unsigned int cport)
     struct gb_uart_info *info;
     unsigned int i;
 
+
     info = zalloc(sizeof(*info));
     if (!info)
         return -ENOMEM;
@@ -336,6 +364,12 @@ static int gb_uart_init(unsigned int cport)
     info->cport = cport;
 
     ret = sem_init(&info->uart_sem, 0, 0);
+ 
+ 
+ 
+	gb_uart_serial_state_init();
+                    
+ 
     
     ret = pthread_create(&info->uart_thread, NULL, gb_uart_thread, info);    
 
@@ -360,6 +394,10 @@ err_kill_pthread:
 
 static int gb_uart_exit(unsigned int cport)
 {
+	
+	gb_operation_destroy(info->ms_ls_operation); 
+	
+	
     return 0;
 }
 
