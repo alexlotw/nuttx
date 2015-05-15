@@ -49,24 +49,32 @@ struct list_note {
     struct list_note *next;
 };
 
-struct gb_uart_info {
-    uint16_t        cport;
-    uint32_t        flags;
-    pthread_t       uart_thread;
-    sem_t           uart_sem;
-    /* circular linked list data */
+struct list_notes_cb {
     struct list_note *head;
     struct list_note *tail;
     struct list_note *available;
     struct list_note *used;
     struct list_note *remainder
+}
+
+struct gb_uart_info {
+    uint16_t        cport;
+    uint32_t        flags;
+    pthread_t       uart_thread;
+    sem_t           uart_sem;
+    /* ms_ls status data */
+    struct gb_operation                 *state_operation;
+    struct gb_uart_serial_state_request *state_request;
+    uint16_t        last_serial_state;
+    /* receiving op data */
+    list_notes_cb   notes_cb
     /* device */
     struct device   *dev;
 };
 
 struct gb_uart_info *info;
 
-int add_list_note(list_note *note)
+int list_add_note(list_note *note)
 {
     if (info->head == NULL) {
         info->head = note;
@@ -78,25 +86,23 @@ int add_list_note(list_note *note)
     }
 }
 
-list_note *get_available_note(void)
+list_note *list_get_available_note(void)
 {
     
 }
 
-list_note *get_used_note(void)
+list_note *list_get_used_note(void)
 {
     
 }
 
 void gb_uart_ms_ls_callback(void)
 {
-    info->flags |= FLAGS_STATUS_CHANGE;
     sem_post(&info->uart_sem);
 }
 
 void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
 {
-    info->flags |= FLAGS_DATA_COMEIN;
     sem_post(&info->uart_sem);
 
     /* switch free buffer to start new receiving */
@@ -105,10 +111,10 @@ void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
 void gb_uart_ms_ls_proc(void)
 {
     struct gb_operation *operation;
-    struct gb_uart_serial_state_request *request;
+    
     int ret;
-    uint16_t data = 0;
-    uint8_t ms_data, ls_data;
+    uint16_t current_state = 0;
+    uint8_t ms_uart, ls_uart;
     
     operation = gb_operation_create(info->cport,
                                     GB_UART_TYPE_SERIAL_STATE,
@@ -117,39 +123,41 @@ void gb_uart_ms_ls_proc(void)
     request = (struct gb_uart_set_control_line_state_request *)
                     gb_operation_get_request_payload(operation);
 
-    device_uart_get_modem_status(info->dev, &ms_data);
-    device_uart_get_line_status(info->dev, &ls_data);
+    device_uart_get_modem_status(info->dev, &ms_uart);
+    device_uart_get_line_status(info->dev, &ls_uart);
     
     if (ms_data & MSR_DCD) {
-        data |= GB_UART_CTRL_DCD;
+        current_state |= GB_UART_CTRL_DCD;
     }
     if (ms_data & MSR_DSR) {
-        data |= GB_UART_CTRL_DSR;
+        current_state |= GB_UART_CTRL_DSR;
     }
     if (ls_data & LSR_BI) {
-        data |= GB_UART_CTRL_BRK;
+        current_state |= GB_UART_CTRL_BRK;
     }
     if (ms_data & MSR_RI) {
-        data |= GB_UART_CTRL_RI;
+        current_state |= GB_UART_CTRL_RI;
     }
     if (ls_data & LSR_FE) {
-        data |= GB_UART_CTRL_FRAMING;
+        current_state |= GB_UART_CTRL_FRAMING;
     }
     if (ls_data & LSR_PE) {
-        data |= GB_UART_CTRL_PARITY;
+        current_state |= GB_UART_CTRL_PARITY;
     }
     if (ls_data & LSR_OE) {
-        data |= GB_UART_CTRL_OVERRUN;
+        current_state |= GB_UART_CTRL_OVERRUN;
     }
-    
-    request->control = 0;
-    request->data = data;
-    
-    ret = gb_operation_send_request(operation, NULL, false);
-    if (ret)
-        lldbg("--- Can't report event : %d\n", ret); /* XXX */
 
-    gb_operation_destroy(operation);    
+    if (info->last_serial_state ^ current_state) {
+        info->last_serial_state = current_state;
+        
+        request->control = 0;
+        request->data = current_state;
+        ret = gb_operation_send_request(operation, NULL, false);
+        if (ret)
+            lldbg("--- Can't report event : %d\n", ret); /* XXX */
+    }
+    // gb_operation_destroy(operation);    
 }
 
 void gb_uart_rx_proc(void)
@@ -359,7 +367,8 @@ static int gb_uart_init(unsigned int cport)
     int ret;
     struct gb_uart_info *info;
     unsigned int i;
-
+    struct gb_operation *operation;
+    
     info = zalloc(sizeof(*info));
     if (!info)
         return -ENOMEM;
@@ -367,6 +376,23 @@ static int gb_uart_init(unsigned int cport)
     lldbg("GB uart info struct: 0x%08p\n", info); /* XXX */
 
     info->cport = cport;
+
+    /* operation of serial status */
+    operation = gb_operation_create(info->cport,
+                                    GB_UART_TYPE_SERIAL_STATE,
+                                    sizeof(*request));
+    if (operation) {
+        /* handle operation error */
+    }
+    
+    request = (struct gb_uart_set_control_line_state_request *)
+                    gb_operation_get_request_payload(operation);
+    
+
+    /* operations of receiving */
+    for () {
+        
+    }
 
     ret = sem_init(&info->uart_sem, 0, 0);
     
