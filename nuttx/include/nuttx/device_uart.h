@@ -94,8 +94,8 @@ struct device_uart_type_ops {
     int (*get_modem_status)(struct device *dev, uint8_t *modem_status);
     int (*get_line_status)(struct device *dev, uint8_t *line_status);
     int (*set_break)(struct device *dev, uint8_t break_on);
-    int (*attach_ms_callback)(struct device *dev, void (*callback)(void));
-    int (*attach_ls_callback)(struct device *dev, void (*callback)(void));
+    int (*attach_ms_callback)(struct device *dev, void (*callback)(uint8_t ms));
+    int (*attach_ls_callback)(struct device *dev, void (*callback)(uint8_t ls));
     int (*start_transmitter)(struct device *dev, uint8_t *buffer, int length,
                              int timeout, int dma, int *sent,
                              void (*callback)(uint8_t *buffer, int length,
@@ -187,7 +187,7 @@ static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
 }
 
 static inline int device_uart_attach_ms_callback(struct device *dev,
-                                                 void (*callback)(void))
+                                                 void (*callback)(unit8_t ms))
 {
     if (dev->state != DEVICE_STATE_OPEN)
         return -ENODEV;
@@ -200,7 +200,7 @@ static inline int device_uart_attach_ms_callback(struct device *dev,
 }
 
 static inline int device_uart_attach_ls_callback(struct device *dev,
-                                                 void (*callback)(void))
+                                                 void (*callback)(uint8_t ls))
 {
     if (dev->state != DEVICE_STATE_OPEN)
         return -ENODEV;

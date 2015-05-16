@@ -106,7 +106,7 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
  * driver. 
  */
 static int tsb_uart_attach_ms_callback(struct device *dev,
-                                       void (*callback)(void))
+                                       void (*callback)(uint8_t ms))
 {
     return 0;
 }
@@ -116,7 +116,7 @@ static int tsb_uart_attach_ms_callback(struct device *dev,
  * driver.
  */
 static int tsb_uart_attach_ls_callback(struct device *dev,
-                                       void (*callback)(void))
+                                       void (*callback)(uint8_t ls))
 {
     return 0;
 }

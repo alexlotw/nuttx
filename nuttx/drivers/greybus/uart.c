@@ -40,88 +40,105 @@
 #define GB_UART_VERSION_MAJOR   0
 #define GB_UART_VERSION_MINOR   1
 
-#define NUM_SMALL_OPERATION     5    
+#define NUM_SMALL_OPERATION     5
 #define NUM_LARGE_OPERATION     5
 
-#define NODE_TYPE_SMALL			32
-#define NODE_TYPE_LARGE			128
+#define OP_BUF_SIZE_SMALL           32
+#define OP_BUF_SIZE_LARGE           128
 
-struct rx_buffer {
+struct op_node {
     sq_entry_s              entry;
     struct gb_operation     *operation;
     uint8_t                 *size;
     uint8_t                 *buffer;
-    uint16_t                type;
+    uint16_t                op_buf_size;
 };
 
 struct gb_uart_info {
     uint16_t        cport;
     uint32_t        flags;
-    
+
+    uint8_t         updated_ms;
+    uint8_t         updated_ls;
     struct gb_operation *ms_ls_operation;
     struct gb_uart_serial_state_request *ms_ls_request;
-    uint16_t        last_serial_state;
     sem_t           status_sem;
     pthread_t       status_thread;
 
-    sq_queue_t      small_buf_q;
-    sq_queue_t      large_buf_q;
-    sq_queue_t      data_q;
-    rx_buffer       working_buffer;
+    sq_queue_t      small_op_queue;
+    sq_queue_t      large_op_queue;
+    sq_queue_t      received_op_queue;
+    op_node         working_op_node;
     int             need_free_node;
     sem_t           rx_sem;
     pthread_t       rx_thread;
-    
+
     struct device   *dev;
 };
 
 struct gb_uart_info *info;
+
 /*
  *  greybus protocol callback to device driver
  */
-void uart_ms_ls_callback(void)
+void uart_ms_callback(uint8_t ms)
 {
+    info->updated_ms = ms;
     sem_post(&info->status_sem);
 }
 
 /*
  *  greybus protocol callback to device driver
  */
+void uart_ls_callback(uint8_t ls)
+{
+    info->updated_ls = ls;
+    sem_post(&info->status_sem);
+}
+
+/*
+ *  greybus protocol callback to device driver
+ */
+
+static struct sq_entry_s *get_free_entry(sq_queue_t first, sq_queue_t second)
+{
+    if (!sq_empty(first)) {
+        return sq_remfirst(small_op_queue);
+    } else if (!sq_empty(second)) {
+        return sq_remfirst(small_op_queue);
+    } else {
+        return NULL;
+    }
+}
+ 
 void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
-		sq_entry_s *entry;
-    struct rx_buffer *buf;
+    sq_entry_s *entry;
+    struct op_node *node;
 
-    sq_addlast(info->working_buffer, data_q);
-
-    if (length < NODE_SIZE_SMALL) {
-        if (!sq_empty(small_buf_q)) {
-            entry = sq_remfirst(small_buf_q);
-        } else if (!sq_empty(large_buf_q)) {
-        		entry = sq_remfirst(large_buf_q);
-        } else {
-        		entry = NULL;
-        }
-    } else {
-        if (!sq_empty(large_buf_q)) {
-            entry = sq_remfirst(large_buf_q);
-        } else if (!sq_empty(small_buf_q)) {
-        		entry = sq_remfirst(small_buf_q);
-        } else {
-        		entry = NULL;
-        }
+    if (error) {
+        /* error handle */ 
     }
-    
-    if (node) {
-    		buf = (struct rx_buffer *) entry;
-        device_uart_start_receiver(info->dev, buf->buffer, buf->type, 10,
-                                   NULL, gb_uart_rx_callback);
-				info->working_buffer = entry;                                   
+
+    info->working_op_node->size = length;
+    sq_addlast(info->working_op_node->entry, received_op_queue);
+
+    if (length < OP_BUF_SIZE_SMALL) {
+        entry = get_free_entry(small_op_queue, large_op_queue)
+    } else {
+        entry = get_free_entry(large_op_queue, small_op_queue)
+    }
+
+    if (entry) {
+        node = (struct op_node *) entry;
+        device_uart_start_receiver(info->dev, node->buffer, node->op_buf_size,
+                                   10, NULL, gb_uart_rx_callback);
+        info->working_op_node = node;
     } else {
         info->need_free_node = 1;
-    }    
-    
-    sem_post(&info->status_sem);
+    }
+
+    sem_post(&info->rx_sem);
 }
 
 /*
@@ -133,15 +150,8 @@ void gb_uart_ms_ls_proc(void)
     int ret;
     uint16_t current_state = 0;
     uint8_t ms_uart, ls_uart;
-    
-    operation = gb_operation_create(info->cport,
-                                    GB_UART_TYPE_SERIAL_STATE,
-                                    sizeof(*request));
-    
-    request = (struct gb_uart_set_control_line_state_request *)
-                    gb_operation_get_request_payload(operation);
 
-    device_uart_get_modem_status(info->dev, &ms_uart);
+    ret = device_uart_get_modem_status(info->dev, &ms_uart);
     if (ms_data & MSR_DCD) {
         current_state |= GB_UART_CTRL_DCD;
     }
@@ -152,7 +162,7 @@ void gb_uart_ms_ls_proc(void)
         current_state |= GB_UART_CTRL_RI;
     }
 
-    device_uart_get_line_status(info->dev, &ls_uart);
+    ret = device_uart_get_line_status(info->dev, &ls_uart);
     if (ls_data & LSR_BI) {
         current_state |= GB_UART_CTRL_BRK;
     }
@@ -168,14 +178,14 @@ void gb_uart_ms_ls_proc(void)
 
     if (info->last_serial_state ^ current_state) {
         info->last_serial_state = current_state;
-        
+
         request->control = 0;
         request->data = current_state;
         ret = gb_operation_send_request(operation, NULL, false);
         if (ret)
             lldbg("--- Can't report event : %d\n", ret); /* XXX */
     }
-    // gb_operation_destroy(operation);    
+    // gb_operation_destroy(operation);
 }
 
 /*
@@ -189,33 +199,33 @@ void gb_uart_rx_proc(void)
 
     if (!sq_empty(data_q)) {
         entry = sq_remfirst(data_q);
-    	buf = (struct rx_buffer *) entry;
-    	if ((buf->type ==NODE_TYPE_LARGE) && (buf->size < NODE_SIZE_SMALL) &&
+        buf = (struct rx_buffer *) entry;
+        if ((buf->type ==NODE_TYPE_LARGE) && (buf->size < NODE_SIZE_SMALL) &&
                     (!sq_empty(small_buf_q))) {
-    		small_entry = sq_remfirst(small_buf_q);
-    		small_buf = (struct rx_buffer *) small_entry;
-    		memcpy(small_buf->request, buf->request, buf->size);
-    		sq_addlast(entry, large_buf_q);
-    		ret = gb_operation_send_request(small_buf->operation, NULL, false);
-    		sq_addlast(entry, small_buf_q);
-    	} else {
-    		ret = gb_operation_send_request(buf->operation, NULL, false);
-    	}
+            small_entry = sq_remfirst(small_buf_q);
+            small_buf = (struct rx_buffer *) small_entry;
+            memcpy(small_buf->request, buf->request, buf->size);
+            sq_addlast(entry, large_buf_q);
+            ret = gb_operation_send_request(small_buf->operation, NULL, false);
+            sq_addlast(entry, small_buf_q);
+        } else {
+            ret = gb_operation_send_request(buf->operation, NULL, false);
+        }
     }
 
     if (info->need_free_node) {
         if ((info->last_size > NODE_TYPE_SMALL) && (!sq_empty(large_buf_q))) {
-        		entry = sq_remfirst(large_buf_q);
-        		buf = (struct rx_buffer *) entry;
+                entry = sq_remfirst(large_buf_q);
+                buf = (struct rx_buffer *) entry;
         }
         else {
-        		if (!sq_empty(small_buf_q)) {
-        				entry = sq_remfirst(small_buf_q);
-        				buf = (struct rx_buffer *) entry;
-        		}
-        		else {
-        				buf = NULL;
-        		}
+                if (!sq_empty(small_buf_q)) {
+                        entry = sq_remfirst(small_buf_q);
+                        buf = (struct rx_buffer *) entry;
+                }
+                else {
+                        buf = NULL;
+                }
         }
 
         if (buf) {
@@ -259,25 +269,25 @@ status int uart_status_change_exit(void)
     if (info->status_thread) {
         pthread_kill(info->status_thread, SIGKILL);
     }
-    
+
     if (info->ms_ls_operation) {
         gb_operation_destroy(info->ms_ls_operation);
     }
-    
-    return OK;    
+
+    return OK;
 }
 
 static int uart_status_change_init(void)
 {
     int ret;
-    
+
     info->ms_ls_operation = gb_operation_create(info->cport,
                                     GB_UART_TYPE_SERIAL_STATE,
                                     sizeof(*info->ms_ls_request));
     if (operation) {
         goto init_fail;
     }
-    
+
     info->ms_ls_request = (struct gb_uart_set_control_line_state_request *)
                     gb_operation_get_request_payload(operation);
 
@@ -292,7 +302,7 @@ static int uart_status_change_init(void)
         ret = -ret;
         goto init_fail;
     }
-    
+
 init_fail:
     return ret;
 }
@@ -308,7 +318,7 @@ static int create_operations(int type, struct sq_queue_t queue, int num)
     struct rx_buffer *buf;
     int ret = OK;
     int i;
-    
+
     for (i = 0; i < num; i++) {
         operation = gb_operation_create(info->cport,
                                         GB_UART_TYPE_RECEIVE_DATA,
@@ -316,7 +326,7 @@ static int create_operations(int type, struct sq_queue_t queue, int num)
         if (operation) {
             buf = (struct rx_buffer *)malloc(rx_buffer);
             buf->operation = operation;
-            
+
             request = (struct gb_uart_receive_data_request *)
                                 gb_operation_get_request_payload(operation);
             buf->size   = &node->request->size;
@@ -337,7 +347,7 @@ create_err:
 static int uart_rx_init(void)
 {
     int ret = OK;
-    
+
     ret = create_operations(NODE_TYPE_LARGE, large_op_entry,
                             NUM_LARGE_OPERATION);
     if (ret) {
@@ -354,10 +364,10 @@ static int uart_rx_init(void)
 
     ret = sem_init(&info->rx_sem, 0, 0);
     if (ret != OK) {
-        uart_rx_exit();        
+        uart_rx_exit();
         return ret;
     }
-    
+
     ret = pthread_create(&info->rx_thread, NULL, rx_thread, info);
     if (ret) {
         uart_rx_exit();
@@ -400,7 +410,7 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
     if (ret) {
         return GB_OP_MALFUNCTION;
     }
-    
+
     return GB_OP_SUCCESS;
 }
 
@@ -421,7 +431,7 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
     int ret;
     int baud, parity, databits, stopbit, flow;
     struct gb_serial_line_coding_request *request;
-    
+
     request = (struct gb_serial_line_coding_request *)
                   gb_operation_get_request_payload(operation);
 
@@ -460,7 +470,7 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
     if (ret) {
         return GB_OP_MALFUNCTION;
     }
-    
+
     return GB_OP_SUCCESS;
 }
 
@@ -472,7 +482,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     int ret;
     uint8_t modem_ctrl;
     struct gb_uart_set_control_line_state_request *request;
-    
+
     request = (struct gb_uart_set_control_line_state_request *)
                   gb_operation_get_request_payload(operation);
 
@@ -480,7 +490,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     if (ret) {
         return GB_OP_MALFUNCTION;
     }
-    
+
     if (request->control & GB_UART_CTRL_DTR) {
         modem_ctrl |= MCR_DTR;
     }
@@ -510,7 +520,7 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
     int ret;
     uint8_t modem_ctrl;
     struct gb_uart_set_break_request *request;
-    
+
     request = (struct gb_uart_set_break_request *)
                   gb_operation_get_request_payload(operation);
 
@@ -518,7 +528,7 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
     if (ret) {
         return GB_OP_MALFUNCTION;
     }
-    
+
     return GB_OP_SUCCESS;
 }
 
@@ -532,7 +542,7 @@ static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 }
 
 /*
- * 
+ *
  */
 static int gb_uart_init(unsigned int cport)
 {
@@ -541,7 +551,7 @@ static int gb_uart_init(unsigned int cport)
     struct gb_uart_info *info;
     struct gb_operation *operation;
     struct list_node *node;
-    
+
     info = zalloc(sizeof(*info));
     if (!info)
         return GB_OP_NO_MEMORY;
@@ -556,20 +566,24 @@ static int gb_uart_init(unsigned int cport)
         return GB_OP_MALFUNCTION;
     }
 
+    sq_init(&info->small_op_queue);
+    sq_init(&info->large_op_queue);
+    sq_init(&info->received_op_queue);
+
     ret = uart_rx_init();
     if (ret) {
         uart_status_change_exit();
         uart_rx_exit();
         return GB_OP_MALFUNCTION;
     }
-    
+
     info->dev = device_open(DEVICE_TYPE_UART_HW, 0);
     if (!info->dev) {
         uart_status_change_exit();
         uart_rx_exit();
         return GB_OP_MALFUNCTION;
     }
-    
+
     return GB_OP_SUCCESS;
 }
 
