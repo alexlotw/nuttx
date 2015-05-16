@@ -187,7 +187,7 @@ static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
 }
 
 static inline int device_uart_attach_ms_callback(struct device *dev,
-                                                 void (*callback)(unit8_t ms))
+                                                 void (*callback)(uint8_t ms))
 {
     if (dev->state != DEVICE_STATE_OPEN)
         return -ENODEV;
