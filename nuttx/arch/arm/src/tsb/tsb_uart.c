@@ -83,7 +83,7 @@ struct tsb_uart_info {
 * @param databits - the number of data bits between 5 to 8 bits.
 * @param stopbits - the value stop bit defined in Stopbits definition
 * @param 0 for disable flow control, 1 for enable flow control.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -100,7 +100,7 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 *
 * @param dev pointer of the UART device structure
 * @param modem_ctrl output value as bitmask of Modem control definition.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -116,7 +116,7 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 *
 * @param dev pointer of the UART device structure
 * @param modem_ctrl set value as bitmask of Modem control definition.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -132,7 +132,7 @@ static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 *
 * @param dev pointer of the UART device structure
 * @param modem_status output value as bitmask of Modem status definition.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -147,7 +147,7 @@ static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 *
 * @param dev pointer of the UART device structure
 * @param line_status output value as bitmask of Line status definition.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -163,7 +163,7 @@ static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 *
 * @param dev pointer of the UART device structure
 * @param break_on break state value, it should be 0 or 1.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -179,7 +179,7 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 *
 * @param dev pointer of the UART device structure
 * @param callback null means caller doesn’t need this event.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -193,11 +193,11 @@ static int tsb_uart_attach_ms_callback(struct device *dev,
 
 /**
 * @brief The function is to register a line status (ls) callback function into
-* the driver. 
+* the driver.
 *
 * @param dev pointer of the UART device structure
 * @param callback null means caller doesn’t need this event.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -223,7 +223,7 @@ static int tsb_uart_attach_ls_callback(struct device *dev,
 * @param sent the length of transmitted data in block mode.
 * @param callback a callback function called when transmitting finished, timeout
 *                 or errors.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EBUSY The DMA function has error.
 * @retval EINVAL Invalid parameters.
@@ -245,7 +245,7 @@ static int tsb_uart_start_transmitter(struct device *dev, uint8_t *buffer,
 * mode.
 *
 * @param dev pointer of the UART device structure
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -269,7 +269,7 @@ static int tsb_uart_stop_transmitter(struct device *dev)
 * @param got the length of received data in blocking mode.
 * @param callback a callback function called when receiving finished, timeout
 *                 or errors.
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EBUSY The DMA function has error.
 * @retval EINVAL Invalid parameters.
@@ -289,7 +289,7 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
 * mode.
 *
 * @param dev pointer of the UART device structure
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
@@ -308,7 +308,7 @@ static int tsb_uart_stop_receiver(struct device *dev)
 * identify the driver was opened and returns success.
 *
 * @param dev pointer of the UART device structure
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval EBUSY Driver is already opened.
 */
@@ -321,7 +321,7 @@ static int tsb_uart_dev_open(struct device *dev)
     flags = irqsave();
 
     /* TODO */
-    
+
 err_irqrestore:
     irqrestore(flags);
 
@@ -344,7 +344,7 @@ static void tsb_uart_dev_close(struct device *dev)
     flags = irqsave();
 
     /* TODO */
-    
+
     info->flags = 0;
 
 err_irqrestore:
@@ -359,7 +359,7 @@ err_irqrestore:
 * and configures the pin settings of the UART controller.
 *
 * @param dev pointer of the UART device structure
-* @return 
+* @return
 * @retval SUCCESS Success.
 * @retval ENOMEM Fail to allocate the memory for driver information.
 * @retval EINTR Fail to attach IRQ handler.
@@ -401,7 +401,7 @@ err_free_info:
 * @brief This function is called by the system to unregister this driver. It
 * must be called after probe() and open(). It detaches IRQ handlers and frees
 * the internal information memory space.
-* 
+*
 * @param dev pointer of the UART device structure
 * @return None.
 */
