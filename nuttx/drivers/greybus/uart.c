@@ -49,6 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 #include <errno.h>
 #include <debug.h>
 #include <stdlib.h>
@@ -113,7 +114,7 @@ static struct gb_uart_info *info;
 * @brief Callback for device driver modem status changes. This function can be
 * called when device driver detect modem status changes.
 *
-* @param ms the updated modem status 
+* @param ms the updated modem status
 * @return none
 */
 static void uart_ms_callback(uint8_t ms)
@@ -127,7 +128,7 @@ static void uart_ms_callback(uint8_t ms)
 * @brief Callback for device driver line status changes. This function can be
 * called when device driver detect line status changes.
 *
-* @param ms the updated modem status 
+* @param ms the updated modem status
 * @return none
 */
 static void uart_ls_callback(uint8_t ls)
@@ -160,7 +161,7 @@ static struct sq_entry_s *get_free_entry(sq_queue_t *first, sq_queue_t *second)
     }
 }
 
- 
+
 /**
 * @brief The callback function provided to device driver for being notified when
 * driver received a data stream.
@@ -180,7 +181,7 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
     if (error == -EIO) {
         /* Don't need to process, the line or modem error will process
          * in ms & ls callback, it just need to send the received data
-         * to peer */ 
+         * to peer */
     }
 
     *info->working_op_node->size = length;
@@ -212,14 +213,14 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
 /**
 * @brief This function parses the UART modem and line status to the bitmask of
 * protocol serial state.
-* 
+*
 * @param data the regular thread data.
 * @return the parsed value of protocol serial state bitmask.
 */
 static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 {
     uint16_t status = 0;
-    
+
     if (modem_status & MSR_DCD) {
         status |= GB_UART_CTRL_DCD;
     }
@@ -241,8 +242,8 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
     if (line_status & LSR_OE) {
         status |= GB_UART_CTRL_OVERRUN;
     }
-    
-    return status;    
+
+    return status;
 }
 
 
@@ -250,7 +251,7 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 * @brief This function is the thread for processing modem and line status
 * change. It uses the operation to send the event to the peer. It only sends the
 * required status for protocol, not the all status in UART.
-* 
+*
 * @param data the regular thread data.
 * @return None.
 */
@@ -258,7 +259,7 @@ static void *status_thread(void *data)
 {
     uint16_t updated_status = 0;
     int ret;
-    
+
     while (1) {
         sem_wait(&info->status_sem);
 
@@ -268,7 +269,7 @@ static void *status_thread(void *data)
         if (info->last_serial_state ^ updated_status) {
 
             info->last_serial_state = updated_status;
-            
+
             info->ms_ls_request->control = 0; /* TODO: no info in spec */
             info->ms_ls_request->data = updated_status;
             ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
@@ -287,7 +288,7 @@ static void *status_thread(void *data)
 * operation to tranfer for saving time.
 * If protocol is running out of operation, once it gets a free operation,
 * it passes to driver for continuing the receiving.
-* 
+*
 * @param data the regular thread data.
 * @return None.
 */
@@ -297,7 +298,7 @@ static void *rx_thread(void *data)
     sq_entry_t *entry, *small_entry;
     int ret;
     irqstate_t flags;
-    
+
     while (1) {
         sem_wait(&info->rx_sem);
 
@@ -307,19 +308,19 @@ static void *rx_thread(void *data)
             if ((node->op_buf_size == OP_BUF_SIZE_LARGE) &&
                 (*node->size <= OP_BUF_SIZE_SMALL) &&
                 (!sq_empty(&info->small_op_queue))) {
-                    
+
                 flags = irqsave();
-                
+
                 small_entry = sq_remfirst(&info->small_op_queue);
-                
+
                 irqrestore(flags);
-                
+
                 small_node = (struct op_node *) small_entry;
                 memcpy(small_node->buffer, node->buffer, node->size);
                 *small_node->size = *node->size;
-                
+
                 sq_addlast(entry, &info->large_op_queue);
-                
+
                 ret = gb_operation_send_request(small_node->operation, NULL,
                                                 false);
                 if (ret) {
@@ -359,14 +360,14 @@ static void *rx_thread(void *data)
             }
         }
     }
-    
+
     return NULL;
 }
 
 
 /**
 * @brief This function releases system and greybus resouce.
-* 
+*
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
@@ -389,7 +390,7 @@ static int uart_status_deinit(void)
 /**
 * @brief This function creates one operations and uses that request of operation
 * for sending the status change event to peer.
-* 
+*
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
@@ -426,7 +427,7 @@ static int uart_status_init(void)
 
 /**
 * @brief This function releases system and greybus resouce.
-* 
+*
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
@@ -440,7 +441,7 @@ static void uart_rx_deinit(void)
     if (info->rx_thread) {
         pthread_kill(info->rx_thread, SIGKILL);
     }
-    
+
     while (!sq_empty(&info->small_op_queue)) {
         entry = sq_remfirst(&info->small_op_queue);
         node = (struct op_node *) entry;
@@ -467,7 +468,7 @@ static void uart_rx_deinit(void)
 /**
 * @brief This function creates operations and uses those request of operation as
 * data buffer prevent the data copy. It adds those operations into a queue.
-* 
+*
 * @param op_size the size of request in operation.
 * @param queue which quese to store these operations.
 * @param num how many operation in the queue.
@@ -510,7 +511,7 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
 * function. It allocates two types of operations for undetermined length of
 * data. The semaphore works as message queue and all tasks are done in the
 * thread.
-* 
+*
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
@@ -553,7 +554,7 @@ static int uart_rx_init(void)
 *
 * Returns the major and minor Greybus UART protocol version number supported
 * by the UART device.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -577,7 +578,7 @@ static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
 *
 * Requests that the UART device begin transmitting characters. One or more
 * bytes to be transmitted will be supplied.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -606,7 +607,7 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
 * @brief Protocol receive data function.
 *
 * Receive data from the UART. One or more bytes will be supplied.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -622,7 +623,7 @@ static uint8_t gb_uart_receive_data(struct gb_operation *operation)
 *
 * Sets the line settings of the UART to the specified baud rate, format,
 * parity, and data bits.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -682,7 +683,7 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 * @brief Protocol set RTS & DTR line status function.
 *
 * Controls RTS and DTR line states of the UART.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -728,7 +729,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 * @brief Protocol send break function.
 *
 * Requests that the UART generate a break condition on its transmit line.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -756,7 +757,7 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
 *
 * Receives the state of the UART's control lines and any line errors that
 * might have occurred.
-* 
+*
 * @param cport the number of cport.
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to operate.
@@ -801,7 +802,7 @@ static int gb_uart_init(unsigned int cport)
     if (ret) {
         goto init_err;
     }
-    
+
     sq_init(&info->small_op_queue);
     sq_init(&info->large_op_queue);
     sq_init(&info->received_op_queue);
@@ -821,14 +822,14 @@ static int gb_uart_init(unsigned int cport)
     if (ret) {
         goto init_err;
     }
-    
+
     ret = device_uart_get_modem_status(info->dev, &ls);
     if (ret) {
         goto init_err;
     }
-    
+
     info->last_serial_state = parse_ms_ls_registers(ms, ls);
-    
+
     ret = device_uart_attach_ms_callback(info->dev, uart_ms_callback);
     if (ret) {
         goto init_err;
@@ -865,7 +866,7 @@ init_err:
 static int gb_uart_exit(unsigned int cport)
 {
     device_uart_attach_ms_callback(info->dev, NULL);
-    
+
     device_uart_attach_ls_callback(info->dev, NULL);
 
     uart_status_deinit();
@@ -873,7 +874,7 @@ static int gb_uart_exit(unsigned int cport)
     uart_rx_deinit();
 
     device_close(info->dev);
-    
+
     return GB_OP_SUCCESS;
 }
 
