@@ -255,7 +255,7 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 * @param data the regular thread data.
 * @return None.
 */
-static void *status_thread(void *data)
+static void *uart_status_thread(void *data)
 {
     uint16_t updated_status = 0;
     int ret;
@@ -292,7 +292,7 @@ static void *status_thread(void *data)
 * @param data the regular thread data.
 * @return None.
 */
-static void *rx_thread(void *data)
+static void *uart_rx_thread(void *data)
 {
     struct op_node *node, *small_node;
     sq_entry_t *entry, *small_entry;
@@ -373,7 +373,7 @@ static void *rx_thread(void *data)
 * @retval 0 sussess to operate.
 * @retval EIO driver driver errors.
 */
-static int uart_status_deinit(void)
+static int uart_status_cb_deinit(void)
 {
     if (info->status_thread) {
         pthread_kill(info->status_thread, SIGKILL);
@@ -397,7 +397,7 @@ static int uart_status_deinit(void)
 * @retval ENOMEM no memory to allicate.
 * @retval EBUSY OS thread resource is busy.
 */
-static int uart_status_init(void)
+static int uart_status_cb_init(void)
 {
     int ret;
 
@@ -416,7 +416,7 @@ static int uart_status_init(void)
         return -ret;
     }
 
-    ret = pthread_create(&info->status_thread, NULL, status_thread, info);
+    ret = pthread_create(&info->status_thread, NULL, uart_status_thread, info);
     if (ret) {
         return -ret;
     }
@@ -433,7 +433,7 @@ static int uart_status_init(void)
 * @retval 0 sussess to operate.
 * @retval EIO driver driver errors.
 */
-static void uart_rx_deinit(void)
+static void uart_receiver_cb_deinit(void)
 {
     struct op_node *node;
     sq_entry_t *entry;
@@ -519,9 +519,13 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
 * @retval EBUSY OS resource is busy.
 * @retval EIO OS resource is error.
 */
-static int uart_rx_init(void)
+static int uart_receiver_cb_init(void)
 {
     int ret;
+
+    sq_init(&info->small_op_queue);
+    sq_init(&info->large_op_queue);
+    sq_init(&info->received_op_queue);
 
     ret = create_operations(OP_BUF_SIZE_LARGE, &info->large_op_queue,
                             NUM_LARGE_OPERATION);
@@ -540,7 +544,7 @@ static int uart_rx_init(void)
         return ret;
     }
 
-    ret = pthread_create(&info->rx_thread, NULL, rx_thread, info);
+    ret = pthread_create(&info->rx_thread, NULL, uart_rx_thread, info);
     if (ret) {
         return ret;
     }
@@ -798,16 +802,12 @@ static int gb_uart_init(unsigned int cport)
 
     info->cport = cport;
 
-    ret = uart_status_init();
+    ret = uart_status_cb_init();
     if (ret) {
         goto init_err;
     }
 
-    sq_init(&info->small_op_queue);
-    sq_init(&info->large_op_queue);
-    sq_init(&info->received_op_queue);
-
-    ret = uart_rx_init();
+    ret = uart_receiver_cb_init();
     if (ret) {
         goto init_err;
     }
@@ -848,8 +848,8 @@ static int gb_uart_init(unsigned int cport)
     return GB_OP_SUCCESS;
 
 init_err:
-    uart_status_deinit();
-    uart_rx_deinit();
+    uart_status_cb_deinit();
+    uart_receiver_cb_deinit();
     return GB_OP_MALFUNCTION;
 }
 
@@ -869,9 +869,9 @@ static int gb_uart_exit(unsigned int cport)
 
     device_uart_attach_ls_callback(info->dev, NULL);
 
-    uart_status_deinit();
+    uart_status_cb_deinit();
 
-    uart_rx_deinit();
+    uart_receiver_cb_deinit();
 
     device_close(info->dev);
 
