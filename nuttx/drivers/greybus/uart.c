@@ -1,29 +1,52 @@
 /*
- * Copyright (c) 2014-2015 Google Inc.
- * All rights reserved.
+ * This file is provided under a dual BSD/GPLv2 license.  When using or
+ * redistributing this file, you may do so under either license.
+ *
+ * GPL LICENSE SUMMARY
+ *
+ * Copyright(c) 2014 - 2015 Google Inc. All rights reserved.
+ * Copyright(c) 2014 - 2015 Linaro Ltd. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License version 2 for more details.
+ *
+ * BSD LICENSE
+ *
+ * Copyright(c) 2014 - 2015 Google Inc. All rights reserved.
+ * Copyright(c) 2014 - 2015 Linaro Ltd. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright notice,
- * this list of conditions and the following disclaimer in the documentation
- * and/or other materials provided with the distribution.
- * 3. Neither the name of the copyright holder nor the names of its
- * contributors may be used to endorse or promote products derived from this
- * software without specific prior written permission.
+ * modification, are permitted provided that the following conditions
+ * are met:
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of Google Inc. or Linaro Ltd. nor the names of
+ *    its contributors may be used to endorse or promote products
+ *    derived from this software without specific prior written
+ *    permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL GOOGLE INC. OR
+ * LINARO LTD. BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
  * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include <errno.h>
@@ -33,6 +56,8 @@
 
 #include <nuttx/device.h>
 #include <nuttx/device_uart.h>
+#include <nuttx/util.h>
+#include <nuttx/greybus/types.h>
 #include <nuttx/greybus/greybus.h>
 
 #include "uart-gb.h"
@@ -43,87 +68,119 @@
 #define NUM_SMALL_OPERATION     5
 #define NUM_LARGE_OPERATION     5
 
-#define OP_BUF_SIZE_SMALL           32
-#define OP_BUF_SIZE_LARGE           128
+#define OP_BUF_SIZE_SMALL       32
+#define OP_BUF_SIZE_LARGE       128
 
 #ifndef SIGKILL
 #define SIGKILL     9
 #endif
 
 struct op_node {
-    sq_entry_t              entry;
-    struct gb_operation     *operation;
-    uint16_t                *size;
-    uint8_t                 *buffer;
-    int                     op_buf_size;
+    sq_entry_t          entry;
+    struct gb_operation *operation;
+    uint16_t            *size;
+    uint8_t             *buffer;
+    int                 op_buf_size;
 };
 
 struct gb_uart_info {
-    uint16_t        cport;
-    uint32_t        flags;
+    uint16_t            cport;
 
-    uint8_t         updated_ms;
-    uint8_t         updated_ls;
+    uint8_t             updated_ms;
+    uint8_t             updated_ls;
+    uint16_t            last_serial_state;
     struct gb_operation *ms_ls_operation;
     struct gb_uart_serial_state_request *ms_ls_request;
-    uint16_t        last_serial_state;
-    sem_t           status_sem;
-    pthread_t       status_thread;
+    sem_t               status_sem;
+    pthread_t           status_thread;
 
-    sq_queue_t      small_op_queue;
-    sq_queue_t      large_op_queue;
-    sq_queue_t      received_op_queue;
-    struct op_node  *working_op_node;
-    int             need_free_node;
-    int             last_op_size;
-    sem_t           rx_sem;
-    pthread_t       rx_thread;
+    sq_queue_t          small_op_queue;
+    sq_queue_t          large_op_queue;
+    sq_queue_t          received_op_queue;
+    struct op_node      *working_op_node;
+    int                 need_free_node;
+    int                 last_op_size;
+    sem_t               rx_sem;
+    pthread_t           rx_thread;
 
     struct device   *dev;
 };
 
-struct gb_uart_info *info;
+static struct gb_uart_info *info;
 
-/*
- *  greybus protocol callback to device driver
- */
-void uart_ms_callback(uint8_t ms)
+
+/**
+* @brief Callback for device driver modem status changes. This function can be
+* called when device driver detect modem status changes.
+*
+* @param ms the updated modem status 
+* @return none
+*/
+static void uart_ms_callback(uint8_t ms)
 {
     info->updated_ms = ms;
     sem_post(&info->status_sem);
 }
 
-/*
- *  greybus protocol callback to device driver
- */
-void uart_ls_callback(uint8_t ls)
+
+/**
+* @brief Callback for device driver line status changes. This function can be
+* called when device driver detect line status changes.
+*
+* @param ms the updated modem status 
+* @return none
+*/
+static void uart_ls_callback(uint8_t ls)
 {
     info->updated_ls = ls;
     sem_post(&info->status_sem);
 }
 
-/*
- *  greybus protocol callback to device driver
- */
 
+/**
+* @brief Get a free entry from two queues.
+*
+* This function return a available entry from one of the two queues. If first
+* has free entry, it dequeue the entry and return. If first queue is empty, it
+* looks for second. If both doesn't have free entry. it return NULL.
+*
+* @param first the first queue for looking.
+* @param second the second queue for looking.
+* @return an available entry
+* @retval NULL for no entry available.
+*/
 static struct sq_entry_s *get_free_entry(sq_queue_t *first, sq_queue_t *second)
 {
     if (!sq_empty(first)) {
-        return sq_remfirst(&info->small_op_queue);
+        return sq_remfirst(first);
     } else if (!sq_empty(second)) {
-        return sq_remfirst(&info->small_op_queue);
+        return sq_remfirst(second);
     } else {
         return NULL;
     }
 }
+
  
+/**
+* @brief The callback function provided to device driver for being notified when
+* driver received a data stream.
+* It put the current operation to received queue and gets another operation to
+* continue receiving. Then notifies rx thread to process.
+*
+* @param buffer data buffer.
+* @param length received data length.
+* @param error error code if the driver encontering.
+* @return None.
+*/
 void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
     sq_entry_t *entry;
     struct op_node *node;
 
-    if (error) {
-        /* error handle */ 
+    if (error == -EIO) {
+        /* Don't need to process, the line or modem error will process
+         * in ms & ls callback, it just need to send the received data
+         * to peer */ 
     }
 
     *info->working_op_node->size = length;
@@ -151,133 +208,171 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
     sem_post(&info->rx_sem);
 }
 
-/*
- *  status change process
- */
-static void uart_ms_ls_proc(void)
+
+/**
+* @brief This function parses the UART modem and line status to the bitmask of
+* protocol serial state.
+* 
+* @param data the regular thread data.
+* @return the parsed value of protocol serial state bitmask.
+*/
+static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 {
-    uint16_t current_state = 0;
-    int ret;
-
-    if (info->updated_ms & MSR_DCD) {
-        current_state |= GB_UART_CTRL_DCD;
+    uint16_t status = 0;
+    
+    if (modem_status & MSR_DCD) {
+        status |= GB_UART_CTRL_DCD;
     }
-    if (info->updated_ms & MSR_DSR) {
-        current_state |= GB_UART_CTRL_DSR;
+    if (modem_status & MSR_DSR) {
+        status |= GB_UART_CTRL_DSR;
     }
-    if (info->updated_ms & MSR_RI) {
-        current_state |= GB_UART_CTRL_RI;
+    if (modem_status & MSR_RI) {
+        status |= GB_UART_CTRL_RI;
     }
-    if (info->updated_ls & LSR_BI) {
-        current_state |= GB_UART_CTRL_BRK;
+    if (line_status & LSR_BI) {
+        status |= GB_UART_CTRL_BRK;
     }
-    if (info->updated_ls & LSR_FE) {
-        current_state |= GB_UART_CTRL_FRAMING;
+    if (line_status & LSR_FE) {
+        status |= GB_UART_CTRL_FRAMING;
     }
-    if (info->updated_ls & LSR_PE) {
-        current_state |= GB_UART_CTRL_PARITY;
+    if (line_status & LSR_PE) {
+        status |= GB_UART_CTRL_PARITY;
     }
-    if (info->updated_ls & LSR_OE) {
-        current_state |= GB_UART_CTRL_OVERRUN;
+    if (line_status & LSR_OE) {
+        status |= GB_UART_CTRL_OVERRUN;
     }
-
-    if (info->last_serial_state ^ current_state) {
-        info->last_serial_state = current_state;
-
-        info->ms_ls_request->control = 0;
-        info->ms_ls_request->data = current_state;
-        ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
-        if (ret)
-            lldbg("--- Can't report event : %d\n", ret); /* XXX */
-    }
-    // gb_operation_destroy(operation);
+    
+    return status;    
 }
 
-/*
- *  Data receiving process
- */
-static void uart_rx_proc(void)
+
+/**
+* @brief This function is the thread for processing modem and line status
+* change. It uses the operation to send the event to the peer. It only sends the
+* required status for protocol, not the all status in UART.
+* 
+* @param data the regular thread data.
+* @return None.
+*/
+static void *status_thread(void *data)
+{
+    uint16_t updated_status = 0;
+    int ret;
+    
+    while (1) {
+        sem_wait(&info->status_sem);
+
+        updated_status = parse_ms_ls_registers(info->updated_ms,
+            info->updated_ls);
+
+        if (info->last_serial_state ^ updated_status) {
+
+            info->last_serial_state = updated_status;
+            
+            info->ms_ls_request->control = 0; /* TODO: no info in spec */
+            info->ms_ls_request->data = updated_status;
+            ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
+            if (ret)
+                lldbg("-status_thread: Can't report event : %d\n", ret);
+        }
+    }
+    return NULL;
+}
+
+
+/**
+* @brief This function is the thread for processing data receiving tasks. When
+* it wake up, it checks the receiving queue for processing the come in data.
+* If the operation is large size but the data is small, it requests a small
+* operation to tranfer for saving time.
+* If protocol is running out of operation, once it gets a free operation,
+* it passes to driver for continuing the receiving.
+* 
+* @param data the regular thread data.
+* @return None.
+*/
+static void *rx_thread(void *data)
 {
     struct op_node *node, *small_node;
     sq_entry_t *entry, *small_entry;
     int ret;
-
-    if (!sq_empty(&info->received_op_queue)) {
-        entry = sq_remfirst(&info->received_op_queue);
-        node = (struct op_node *) entry;
-        if ((node->op_buf_size == OP_BUF_SIZE_LARGE) &&
-            (*node->size <= OP_BUF_SIZE_SMALL) &&
-            (!sq_empty(&info->small_op_queue))) {
-
-            small_entry = sq_remfirst(&info->small_op_queue);
-            small_node = (struct op_node *) small_entry;
-            memcpy(small_node->buffer, node->buffer, node->size);
-            *small_node->size = *node->size;
-            sq_addlast(entry, &info->large_op_queue);
-            
-            ret = gb_operation_send_request(small_node->operation, NULL, false);
-            if (ret) {
-                /* gb_operation handler */
-            }
-            sq_addlast(small_entry, &info->small_op_queue);
-        } else {
-            ret = gb_operation_send_request(node->operation, NULL, false);
-            if (ret) {
-                /* gb_operation handler */
-            }
-            sq_addlast(entry, &info->large_op_queue);
-        }
-    }
-
-    if (info->need_free_node) {
-        if (info->last_op_size == OP_BUF_SIZE_LARGE) {
-            entry = get_free_entry(&info->large_op_queue,
-                                   &info->small_op_queue);
-        }
-        else {
-            entry = get_free_entry(&info->small_op_queue,
-                                   &info->large_op_queue);
-        }
-        if (entry) {
-            node = (struct op_node *) entry;
-            ret = device_uart_start_receiver(info->dev, node->buffer,
-                                             node->op_buf_size, 10, 0, NULL,
-                                             uart_rx_callback);
-            if (ret) {
-                /* fatal error */
-            }
-        }
-        else {
-            /* fatal error */
-        }
-    }
-}
-
-/*
- *  This thread for notifying status change to peer.
- */
-static void *status_thread(void *data)
-{
-    while (1) {
-        sem_wait(&info->status_sem);
-        uart_ms_ls_proc();
-    }
-    return NULL;
-}
-
-/*
- *  This thread for pumping receiving data to peer.
- */
-static void *rx_thread(void *data)
-{
+    irqstate_t flags;
+    
     while (1) {
         sem_wait(&info->rx_sem);
-        uart_rx_proc();
+
+        if (!sq_empty(&info->received_op_queue)) {
+            entry = sq_remfirst(&info->received_op_queue);
+            node = (struct op_node *) entry;
+            if ((node->op_buf_size == OP_BUF_SIZE_LARGE) &&
+                (*node->size <= OP_BUF_SIZE_SMALL) &&
+                (!sq_empty(&info->small_op_queue))) {
+                    
+                flags = irqsave();
+                
+                small_entry = sq_remfirst(&info->small_op_queue);
+                
+                irqrestore(flags);
+                
+                small_node = (struct op_node *) small_entry;
+                memcpy(small_node->buffer, node->buffer, node->size);
+                *small_node->size = *node->size;
+                
+                sq_addlast(entry, &info->large_op_queue);
+                
+                ret = gb_operation_send_request(small_node->operation, NULL,
+                                                false);
+                if (ret) {
+                    lldbg("-rx_thread: Can't send request : %d\n", ret);
+                }
+                sq_addlast(small_entry, &info->small_op_queue);
+            } else {
+                ret = gb_operation_send_request(node->operation, NULL, false);
+                if (ret) {
+                    lldbg("-rx_thread: Can't send request : %d\n", ret);
+                }
+                sq_addlast(entry, &info->large_op_queue);
+            }
+        }
+
+        if (info->need_free_node) {
+            if (info->last_op_size == OP_BUF_SIZE_LARGE) {
+                entry = get_free_entry(&info->large_op_queue,
+                                       &info->small_op_queue);
+            }
+            else {
+                entry = get_free_entry(&info->small_op_queue,
+                                       &info->large_op_queue);
+            }
+            if (entry) {
+                node = (struct op_node *) entry;
+                ret = device_uart_start_receiver(info->dev, node->buffer,
+                                                 node->op_buf_size, 10, 0, NULL,
+                                                 uart_rx_callback);
+                info->need_free_node = 0;
+                if (ret) {
+                    lldbg("-rx_thread: driver error in receiving : %d\n", ret);
+                }
+            }
+            else {
+                lldbg("-rx_thread: No entry to continue : %d\n", ret);
+            }
+        }
     }
+    
     return NULL;
 }
 
-static int uart_status_change_deinit(void)
+
+/**
+* @brief This function releases system and greybus resouce.
+* 
+* @param None.
+* @return return error code.
+* @retval 0 sussess to operate.
+* @retval EIO driver driver errors.
+*/
+static int uart_status_deinit(void)
 {
     if (info->status_thread) {
         pthread_kill(info->status_thread, SIGKILL);
@@ -290,48 +385,101 @@ static int uart_status_change_deinit(void)
     return OK;
 }
 
-static int uart_status_change_init(void)
+
+/**
+* @brief This function creates one operations and uses that request of operation
+* for sending the status change event to peer.
+* 
+* @param None.
+* @return return error code.
+* @retval 0 sussess to operate.
+* @retval ENOMEM no memory to allicate.
+* @retval EBUSY OS thread resource is busy.
+*/
+static int uart_status_init(void)
 {
-    struct gb_operation *operation;
     int ret;
 
     info->ms_ls_operation = gb_operation_create(info->cport,
                                     GB_UART_TYPE_SERIAL_STATE,
                                     sizeof(*info->ms_ls_request));
-    if (operation) {
-        goto init_fail;
+    if (!info->ms_ls_operation) {
+        return -ENOMEM;
     }
 
     info->ms_ls_request = (struct gb_uart_serial_state_request *)
-                    gb_operation_get_request_payload(operation);
+                    gb_operation_get_request_payload(info->ms_ls_operation);
 
     ret = sem_init(&info->status_sem, 0, 0);
-    if (ret != OK) {
-        ret = -ret;
-        goto init_fail;
+    if (!ret) {
+        return -ret;
     }
 
     ret = pthread_create(&info->status_thread, NULL, status_thread, info);
     if (ret) {
-        ret = -ret;
-        goto init_fail;
+        return -ret;
     }
 
-init_fail:
-    return ret;
-}
-
-static int uart_rx_deinit(void)
-{
     return 0;
 }
 
+
+/**
+* @brief This function releases system and greybus resouce.
+* 
+* @param None.
+* @return return error code.
+* @retval 0 sussess to operate.
+* @retval EIO driver driver errors.
+*/
+static void uart_rx_deinit(void)
+{
+    struct op_node *node;
+    sq_entry_t *entry;
+
+    if (info->rx_thread) {
+        pthread_kill(info->rx_thread, SIGKILL);
+    }
+    
+    while (!sq_empty(&info->small_op_queue)) {
+        entry = sq_remfirst(&info->small_op_queue);
+        node = (struct op_node *) entry;
+        gb_operation_destroy(node->operation);
+        free(node);
+    }
+
+    while (!sq_empty(&info->large_op_queue)) {
+        entry = sq_remfirst(&info->large_op_queue);
+        node = (struct op_node *) entry;
+        gb_operation_destroy(node->operation);
+        free(node);
+    }
+
+    while (!sq_empty(&info->received_op_queue)) {
+        entry = sq_remfirst(&info->received_op_queue);
+        node = (struct op_node *) entry;
+        gb_operation_destroy(node->operation);
+        free(node);
+    }
+}
+
+
+/**
+* @brief This function creates operations and uses those request of operation as
+* data buffer prevent the data copy. It adds those operations into a queue.
+* 
+* @param op_size the size of request in operation.
+* @param queue which quese to store these operations.
+* @param num how many operation in the queue.
+* @return return error code.
+* @retval 0 sussess to operate.
+* @retval ENOMEM no memory to allicate.
+*/
 static int create_operations(int op_size, sq_queue_t *queue, int num)
 {
     struct gb_operation *operation;
     struct gb_uart_receive_data_request *request;
     struct op_node *node;
-    int ret = OK;
     int i;
 
     for (i = 0; i < num; i++) {
@@ -350,50 +498,66 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
             sq_addlast(&node->entry, queue);
         }
         else {
-            ret = -ENOMEM;
-            goto create_err;
+            return -ENOMEM;
         }
     }
-
-create_err:
-    return ret;
+    return 0;
 }
 
+
+/**
+* @brief This function allocates OS resource to support the data receiving
+* function. It allocates two types of operations for undetermined length of
+* data. The semaphore works as message queue and all tasks are done in the
+* thread.
+* 
+* @param None.
+* @return return error code.
+* @retval 0 sussess to operate.
+* @retval ENOMEM no memory to allicate.
+* @retval EBUSY OS resource is busy.
+* @retval EIO OS resource is error.
+*/
 static int uart_rx_init(void)
 {
-    int ret = OK;
+    int ret;
 
     ret = create_operations(OP_BUF_SIZE_LARGE, &info->large_op_queue,
                             NUM_LARGE_OPERATION);
-    if (ret) {
-        uart_rx_deinit();
-        return ret;
+    if (!ret) {
+        return -ENOMEM;
     }
 
     ret = create_operations(OP_BUF_SIZE_SMALL, &info->small_op_queue,
                             NUM_SMALL_OPERATION);
-    if (ret) {
-        uart_rx_deinit();
-        return ret;
+    if (!ret) {
+        return -ENOMEM;
     }
 
     ret = sem_init(&info->rx_sem, 0, 0);
     if (ret != OK) {
-        uart_rx_deinit();
         return ret;
     }
 
     ret = pthread_create(&info->rx_thread, NULL, rx_thread, info);
     if (ret) {
-        uart_rx_deinit();
         return ret;
     }
+
+    return 0;
 }
 
-/*
- * Returns the major and minor Greybus UART protocol version number supported
- * by the UART device.
- */
+
+/**
+* @brief Protocol get version function.
+*
+* Returns the major and minor Greybus UART protocol version number supported
+* by the UART device.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+*/
 static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
 {
     struct gb_uart_proto_version_response *response;
@@ -407,10 +571,18 @@ static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
     return GB_OP_SUCCESS;
 }
 
-/*
- * Requests that the UART device begin transmitting characters. One or more
- * bytes to be transmitted will be supplied.
- */
+
+/**
+* @brief Protocol send data function.
+*
+* Requests that the UART device begin transmitting characters. One or more
+* bytes to be transmitted will be supplied.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+* @retval GB_OP_MALFUNCTION the driver operation errors.
+*/
 static uint8_t gb_uart_send_data(struct gb_operation *operation)
 {
     int ret;
@@ -429,18 +601,34 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
     return GB_OP_SUCCESS;
 }
 
-/*
- * Receive data from the UART. One or more bytes will be supplied.
- */
+
+/**
+* @brief Protocol receive data function.
+*
+* Receive data from the UART. One or more bytes will be supplied.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+*/
 static uint8_t gb_uart_receive_data(struct gb_operation *operation)
 {
     return GB_OP_SUCCESS;
 }
 
-/*
- * Sets the line settings of the UART to the specified baud rate, format,
- * parity, and data bits.
- */
+
+/**
+* @brief Protocol set line coding function.
+*
+* Sets the line settings of the UART to the specified baud rate, format,
+* parity, and data bits.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+* @retval GB_OP_INVALID invalid input parameter.
+* @retval GB_OP_MALFUNCTION the driver operation errors.
+*/
 static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 {
     int ret;
@@ -489,9 +677,17 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
     return GB_OP_SUCCESS;
 }
 
-/*
- * Controls RTS and DTR line states of the UART.
- */
+
+/**
+* @brief Protocol set RTS & DTR line status function.
+*
+* Controls RTS and DTR line states of the UART.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+* @retval GB_OP_MALFUNCTION the driver operation errors.
+*/
 static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 {
     int ret;
@@ -527,9 +723,17 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     return GB_OP_SUCCESS;
 }
 
-/*
- * Requests that the UART generate a break condition on its transmit line.
- */
+
+/**
+* @brief Protocol send break function.
+*
+* Requests that the UART generate a break condition on its transmit line.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+* @retval GB_OP_MALFUNCTION the driver operation errors.
+*/
 static uint8_t gb_uart_send_break(struct gb_operation *operation)
 {
     int ret;
@@ -546,62 +750,133 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
     return GB_OP_SUCCESS;
 }
 
-/*
- * Receives the state of the UART's control lines and any line errors that
- * might have occurred.
- */
+
+/**
+* @brief Protocol serial state function.
+*
+* Receives the state of the UART's control lines and any line errors that
+* might have occurred.
+* 
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to operate.
+*/
 static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 {
+    /*
+     * In spec, the Greybus UART serial state operation is initiated by the
+     * Module implementing the UART Protocol
+     */
     return GB_OP_SUCCESS;
 }
 
-/*
- *
- */
+
+/**
+* @brief Protocol initialization function.
+*
+* This function perform the protocto initialization function, such as open
+* the cooperation device driver, launch threads, create buffers etc.
+*
+* @param cport the number of cport
+* @return return error code
+* @retval GB_OP_SUCCESS sussess to initialization
+* @retval GB_OP_NO_MEMORY no memory to allicate.
+* @retval GB_OP_MALFUNCTION driver operation errors.
+*/
 static int gb_uart_init(unsigned int cport)
 {
     int ret;
-    //struct gb_uart_info *info;
+    uint8_t ms, ls;
 
     info = zalloc(sizeof(*info));
-    if (!info)
+    if (!info) {
         return GB_OP_NO_MEMORY;
+    }
 
     lldbg("GB uart info struct: 0x%08p\n", info);
 
     info->cport = cport;
 
-    ret = uart_status_change_init();
+    ret = uart_status_init();
     if (ret) {
-        uart_status_change_deinit();
-        return GB_OP_MALFUNCTION;
+        goto init_err;
     }
-
+    
     sq_init(&info->small_op_queue);
     sq_init(&info->large_op_queue);
     sq_init(&info->received_op_queue);
 
     ret = uart_rx_init();
     if (ret) {
-        uart_status_change_deinit();
-        uart_rx_deinit();
-        return GB_OP_MALFUNCTION;
+        goto init_err;
     }
 
     info->dev = device_open(DEVICE_TYPE_UART_HW, 0);
     if (!info->dev) {
-        uart_status_change_deinit();
-        uart_rx_deinit();
-        return GB_OP_MALFUNCTION;
+        goto init_err;
     }
 
+    /* update serial status */
+    ret = device_uart_get_modem_status(info->dev, &ms);
+    if (ret) {
+        goto init_err;
+    }
+    
+    ret = device_uart_get_modem_status(info->dev, &ls);
+    if (ret) {
+        goto init_err;
+    }
+    
+    info->last_serial_state = parse_ms_ls_registers(ms, ls);
+    
+    ret = device_uart_attach_ms_callback(info->dev, uart_ms_callback);
+    if (ret) {
+        goto init_err;
+    }
+
+    ret = device_uart_attach_ls_callback(info->dev, uart_ls_callback);
+    if (ret) {
+        goto init_err;
+    }
+
+    /* trigger the first receiving */
+    info->need_free_node = 1;
+    info->last_op_size = OP_BUF_SIZE_LARGE;
+    sem_post(&info->rx_sem);
+
+    return GB_OP_SUCCESS;
+
+init_err:
+    uart_status_deinit();
+    uart_rx_deinit();
+    return GB_OP_MALFUNCTION;
+}
+
+
+/**
+* @brief Protocol exit function.
+*
+* This function can be called when protocol terminated.
+*
+* @param cport the number of cport.
+* @return return error code.
+* @retval GB_OP_SUCCESS sussess to get capabilities.
+*/
+static int gb_uart_exit(unsigned int cport)
+{
+    device_uart_attach_ms_callback(info->dev, NULL);
+    
+    device_uart_attach_ls_callback(info->dev, NULL);
+
+    uart_status_deinit();
+
+    uart_rx_deinit();
+
+    device_close(info->dev);
+    
     return GB_OP_SUCCESS;
 }
 
-static int gb_uart_exit(unsigned int cport)
-{
-    return GB_OP_SUCCESS;
-}
 
 static struct gb_operation_handler gb_uart_handlers[] = {
     GB_HANDLER(GB_UART_TYPE_PROTOCOL_VERSION, gb_uart_protocol_version),
@@ -614,6 +889,7 @@ static struct gb_operation_handler gb_uart_handlers[] = {
     GB_HANDLER(GB_UART_TYPE_SERIAL_STATE, gb_uart_serial_state),
 };
 
+
 struct gb_driver uart_driver = {
     .init = gb_uart_init,
     .exit = gb_uart_exit,
@@ -621,6 +897,15 @@ struct gb_driver uart_driver = {
     .op_handlers_count = ARRAY_SIZE(gb_uart_handlers),
 };
 
+
+/**
+* @brief Protocol registering function.
+*
+* This function can be called by greybus to register the UART protocol.
+*
+* @param cport the number of cport.
+* @return none.
+*/
 void gb_uart_register(int cport)
 {
     lldbg("gb_uart_register: cport %d\n", cport);
