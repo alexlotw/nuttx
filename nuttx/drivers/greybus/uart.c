@@ -344,6 +344,41 @@ static uint8_t gb_uart_serial_state_init(void)
                                     GB_UART_TYPE_SERIAL_STATE,
                                     sizeof(*info->ms_ls_request));
    	
+
+
+    int ret;
+    uint16_t data = 0;
+    uint8_t ms_data, ls_data;
+
+
+    device_uart_get_modem_status(info->dev, &ms_data);
+    device_uart_get_line_status(info->dev, &ls_data);
+    
+    if (ms_data & MSR_DCD) {
+        data |= GB_UART_CTRL_DCD;
+    }
+    if (ms_data & MSR_DSR) {
+        data |= GB_UART_CTRL_DSR;
+    }
+    if (ls_data & LSR_BI) {
+        data |= GB_UART_CTRL_BRK;
+    }
+    if (ms_data & MSR_RI) {
+        data |= GB_UART_CTRL_RI;
+    }
+    if (ls_data & LSR_FE) {
+        data |= GB_UART_CTRL_FRAMING;
+    }
+    if (ls_data & LSR_PE) {
+        data |= GB_UART_CTRL_PARITY;
+    }
+    if (ls_data & LSR_OE) {
+        data |= GB_UART_CTRL_OVERRUN;
+    }
+    
+    info->ms_ls_request->control = 0;
+    info->ms_ls_request->data = data;
+    
 	
     return GB_OP_SUCCESS;
 }
