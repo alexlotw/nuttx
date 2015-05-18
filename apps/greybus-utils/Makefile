@@ -100,7 +100,7 @@ ifeq ($(CONFIG_MANIFEST_LOOPBACK), y)
  MANIFEST = simple-loopback-module
 endif
 
-ifeq ($(CONFIG_MANIFEST_CONSOLE), y)
+ifeq ($(CONFIG_MANIFEST_UART), y)
  MANIFEST = simple-uart-module
 endif
 

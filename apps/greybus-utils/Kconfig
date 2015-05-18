@@ -20,6 +20,8 @@ config MANIFEST_LOOPBACK
   bool "Loopback"
 config CUSTOM_MANIFEST
   bool "Custom manifest"
+config MANIFEST_UART
+  bool "Uart"
 endchoice
 
 config MANIFEST

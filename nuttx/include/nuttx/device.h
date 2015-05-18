@@ -45,6 +45,7 @@ enum device_state {
 };
 
 struct device_pll_type_ops;
+struct device_uart_type_ops;
 
 struct device_driver_ops {
     int     (*probe)(struct device *dev);
