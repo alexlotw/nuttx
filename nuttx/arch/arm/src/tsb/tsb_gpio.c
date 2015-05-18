@@ -245,7 +245,8 @@ void tsb_gpio_initialize(void)
     irqstate_t flags;
 
     flags = irqsave();
-    refcount++;
+    if (refcount++)
+        goto out;
 
     tsb_clk_enable(TSB_CLK_GPIO);
     tsb_reset(TSB_RST_GPIO);
@@ -257,7 +258,7 @@ void tsb_gpio_initialize(void)
 
     /* Enable Interrupt Handler */
     up_enable_irq(TSB_IRQ_GPIO);
-
+out:
     irqrestore(flags);
 }
 
@@ -266,17 +267,17 @@ void tsb_gpio_uninitialize(void)
     irqstate_t flags;
 
     flags = irqsave();
-    refcount--;
-    if (refcount > 0) {
-        irqrestore(flags);
-        return;
-    }
+    if (!refcount)
+        goto out;
+
+    if (--refcount)
+        goto out;
 
     tsb_clk_disable(TSB_CLK_GPIO);
 
     /* Detach Interrupt Handler */
     irq_detach(TSB_IRQ_GPIO);
-
+out:
     irqrestore(flags);
 }
 
