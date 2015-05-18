@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <debug.h>
 #include <stdlib.h>
+#include <queue.h>
 
 #include <nuttx/device.h>
 #include <nuttx/device_uart.h>
@@ -42,38 +43,15 @@
 #define NUM_SMALL_OPERATION     5    
 #define NUM_LARGE_OPERATION     5
 
-#define NODE_STATUS_FREE        0x00
-#define NODE_STATUS_PUTTING     0x01
-#define NODE_STATUS_OCCUPIED  	0x02
-#define NODE_STATUS_TAKING		0x03
+#define NODE_TYPE_SMALL			32
+#define NODE_TYPE_LARGE			128
 
-#define NODE_TYPE_SMALL			0x00
-#define NODE_TYPE_LARGE			0x01
-
-struct list_node {
-    struct list_node		*prev;
-    struct list_node        *next;
-	struct list_node		*q_next;
+struct rx_buffer {
+    sq_entry_s              entry;
     struct gb_operation     *operation;
     uint8_t                 *size;
     uint8_t                 *buffer;
-    uint16_t                status;
     uint16_t                type;
-};
-
-struct list_entry {
-    struct list_node    *head;
-    struct list_node    *tail;
-    struct list_node    *used;
-    struct list_node    *free;
-    int                 total;
-    int                 remainder;
-};
-
-struct queue_entry{
-	struct link_node	*head;
-	struct link_node	*tail;
-	int					total;
 };
 
 struct gb_uart_info {
@@ -85,11 +63,11 @@ struct gb_uart_info {
     uint16_t        last_serial_state;
     sem_t           status_sem;
     pthread_t       status_thread;
-    
-    list_entry      small_op_entry;
-    list_entry      large_op_entry;
-    //list_node       in_driver_node;
-    queue_entry     received_entry;
+
+    sq_queue_t      small_buf_q;
+    sq_queue_t      large_buf_q;
+    sq_queue_t      data_q;
+    rx_buffer       working_buffer;
     int             need_free_node;
     sem_t           rx_sem;
     pthread_t       rx_thread;
@@ -98,121 +76,10 @@ struct gb_uart_info {
 };
 
 struct gb_uart_info *info;
-
-/*
- * Linked list functions
- */
-int list_add_before(struct list_node *node1, struct list_node *node2)
-{
-	struct list_node *prev;
-
-	prev = node1->prev;
-	prev->next = node2;
-	node2->prev = prev;
-	node2->next = node1;
-	node1->prev = node2;
-}
-
-int list_add_after(struct list_node *node1, struct list_node *node2)
-{
-	struct list_node *next;
-
-	next = node1->next;
-	next->prev = node2;
-	node1->next = node2;
-	node2->prev = node1;
-	node2->next = next;
-}
-
-int list_remove(struct list node *node)
-{
-	struct list_node prev, next;
-
-	prev = node->prev;
-	next = node->next;
-	prev->next = next;
-	next->prev = prev;
-}
-
-/*
- * Queue functions
- */
-int queue_add(struct queue_entry queue, struct list_node *node)
-{
-    if (queue->total == 0) {
-        queue->head = node;
-        queue->tail = node;
-        
-    }
-    else {
-        queue->tail->q_next = node;
-        queue->tail = node;
-    }
-    queue->tail->q_next = NULL;
-    queue->total++;
-}
-
-struct list_node *queue_take(struct queue_entry queue)
-{
-    struct list_node *node;
-
-    queue->total--;
-    if (queue->total) {
-        queue->head = queue->head->q_next;
-    }
-    else {
-        queue->head = NULL;
-        queue->tail = NULL;
-    }
-}
-
-/*
- *
- */
-int node_add_new(struct list_entry entry, struct list_node *node)
-{
-    if (entry->head == NULL) {
-        entry->head = note;
-        entry->free = note;
-        entry->used = NULL;
-        note->prev = note;
-        note->next = note;
-    }
-    else {
-        list_add_after(entry->tail, node);
-        note->prev = entry->tail;
-        note->next = entry->head;
-    }
-    entry->tail = node;
-    entry->total++;
-    entry->remainder++;
-}
-
-struct list_node *node_get_free(struct list_entry *entry)
-{
-    struct list_node *node;
-
-    if (entry->remainder) {
-        return NULL;
-    }
-    else {
-        node = entry->free;
-        entry->free = node->next;
-        entry->remainder--;
-        return node;
-    }
-}
-
-int node_move_last(struct list_entry *entry, struct list_node node)
-{
-    list_remove(node);
-    list_add_before(entry->used, node);
-}
-
 /*
  *  greybus protocol callback to device driver
  */
-void gb_uart_ms_ls_callback(void)
+void uart_ms_ls_callback(void)
 {
     sem_post(&info->status_sem);
 }
@@ -220,36 +87,41 @@ void gb_uart_ms_ls_callback(void)
 /*
  *  greybus protocol callback to device driver
  */
-void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
+void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
-    struct list_node *node;
+		sq_entry_s *entry;
+    struct rx_buffer *buf;
 
-    node = info->in_driver_node;
-    node->status = NODE_STATUS_TO_EAT;
-    node->data_len = length;
-    queue_add(received_entry, node);
+    sq_addlast(info->working_buffer, data_q);
 
     if (length < NODE_SIZE_SMALL) {
-        node = node_get_free(info->small_op_entry);
-        if (node == NULL) {
-            node = node_get_free(info->large_op_entry);
+        if (!sq_empty(small_buf_q)) {
+            entry = sq_remfirst(small_buf_q);
+        } else if (!sq_empty(large_buf_q)) {
+        		entry = sq_remfirst(large_buf_q);
+        } else {
+        		entry = NULL;
         }
     } else {
-        node = node_get_free(info->large_op_entry);
-        if (node == NULL) {
-            node = node_get_free(info->small_op_entry);
+        if (!sq_empty(large_buf_q)) {
+            entry = sq_remfirst(large_buf_q);
+        } else if (!sq_empty(small_buf_q)) {
+        		entry = sq_remfirst(small_buf_q);
+        } else {
+        		entry = NULL;
         }
     }
     
     if (node) {
-        node->status = NODE_STATUS_COOKING;
-        device_uart_start_receiver(info->dev, node->buffer, node->size, 10,
+    		buf = (struct rx_buffer *) entry;
+        device_uart_start_receiver(info->dev, buf->buffer, buf->type, 10,
                                    NULL, gb_uart_rx_callback);
+				info->working_buffer = entry;                                   
     } else {
         info->need_free_node = 1;
     }    
     
-    sem_post(&info->uart_sem);
+    sem_post(&info->status_sem);
 }
 
 /*
@@ -258,7 +130,6 @@ void gb_uart_rx_callback(uint8_t *buffer, int length, int error)
 void gb_uart_ms_ls_proc(void)
 {
     struct gb_operation *operation;
-    
     int ret;
     uint16_t current_state = 0;
     uint8_t ms_uart, ls_uart;
@@ -313,38 +184,42 @@ void gb_uart_ms_ls_proc(void)
 void gb_uart_rx_proc(void)
 {
     struct gb_operation *operation;
-    struct list_node *node, *small_node;
+    struct rx_buffer *buf, *small_buf;
+    sq_entry_s *entry, *small_entry;
 
-    node = queue_take(received_entry);
-
-    if (node != NULL) {
-        if (node->type == NODE_TYPE_LARGE) {
-            if (node->data_len <= NODE_SIZE_SMALL) {
-                small_node = node_get_free(small_op_entry);
-                if (small_node != NULL) {
-                    memcpy(small_node->request, node->request,
-                    node->data_len + 2);
-                    node->NODE_STATUS_AVAILABLE;
-                    node_move_last(large_op_entry, node);
-                    node = small_node;
-                }
-            }
-        }
-        ret = gb_operation_send_request(node->operation, NULL, false);        
+    if (!sq_empty(data_q)) {
+        entry = sq_remfirst(data_q);
+    	buf = (struct rx_buffer *) entry;
+    	if ((buf->type ==NODE_TYPE_LARGE) && (buf->size < NODE_SIZE_SMALL) &&
+                    (!sq_empty(small_buf_q))) {
+    		small_entry = sq_remfirst(small_buf_q);
+    		small_buf = (struct rx_buffer *) small_entry;
+    		memcpy(small_buf->request, buf->request, buf->size);
+    		sq_addlast(entry, large_buf_q);
+    		ret = gb_operation_send_request(small_buf->operation, NULL, false);
+    		sq_addlast(entry, small_buf_q);
+    	} else {
+    		ret = gb_operation_send_request(buf->operation, NULL, false);
+    	}
     }
 
     if (info->need_free_node) {
-        node = NULL;
-        if (info->last_size > NODE_SIZE_SMALL) {
-            node = node_get_free(large_op_entry);
+        if ((info->last_size > NODE_TYPE_SMALL) && (!sq_empty(large_buf_q))) {
+        		entry = sq_remfirst(large_buf_q);
+        		buf = (struct rx_buffer *) entry;
         }
-        if (node == NULL) {
-            node = node_get_free(small_op_entry);
+        else {
+        		if (!sq_empty(small_buf_q)) {
+        				entry = sq_remfirst(small_buf_q);
+        				buf = (struct rx_buffer *) entry;
+        		}
+        		else {
+        				buf = NULL;
+        		}
         }
 
-        if (node) {
-            node->status = NODE_STATUS_COOKING;
-            device_uart_start_receiver(info->dev, node->buffer, node->size, 10,
+        if (buf) {
+            device_uart_start_receiver(info->dev, buf->buffer, buf->type, 10,
                                        NULL, gb_uart_rx_callback);
         }
     }
@@ -426,10 +301,11 @@ static int uart_rx_exit(void)
 {
 }
 
-static int create_operations(int type, struct list_entry, entry, int num)
+static int create_operations(int type, struct sq_queue_t queue, int num)
 {
     struct gb_operation *operation;
     struct gb_uart_receive_data_request *request;
+    struct rx_buffer *buf;
     int ret = OK;
     int i;
     
@@ -438,22 +314,20 @@ static int create_operations(int type, struct list_entry, entry, int num)
                                         GB_UART_TYPE_RECEIVE_DATA,
                                         sizeof(*request) + 2 + type);
         if (operation) {
-            node = (struct list_node *)malloc(list_node);
-            node->operation = operation;
+            buf = (struct rx_buffer *)malloc(rx_buffer);
+            buf->operation = operation;
             
             request = (struct gb_uart_receive_data_request *)
                                 gb_operation_get_request_payload(operation);
-            node->size   = &node->request->size;
-            node->buffer = node->request->data;
-            node->status = NODE_STATUS_FREE;
-            node->type = type;
-            list_add_node(node);
+            buf->size   = &node->request->size;
+            buf->buffer = node->request->data;
+            buf->type = type;
+            sq_addlast(buf->entry, queue);
         }
         else {
             ret = -ENOMEM;
             goto create_err;
         }
-        node_add_new(entry, node);
     }
 
 create_err:
