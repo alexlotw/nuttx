@@ -198,7 +198,7 @@ static void uart_ls_callback(uint8_t ls)
 */
 static sq_entry_t *get_free_entry(sq_queue_t *first, sq_queue_t *second)
 {
-    return sq_empty(first) ? sq_empty(first) ?  NULL : sq_remfirst(second) :
+    return sq_empty(first) ? sq_empty(second) ?  NULL : sq_remfirst(second) :
                              sq_remfirst(first);
 }
 
@@ -221,7 +221,7 @@ static void recycle_op_node(struct op_node *node)
 
 
 /**
-* @brief Callback of data receiving
+* @brief Callback for data receiving
 *
 * The callback function provided to device driver for being notified when
 * driver received a data stream.
@@ -259,7 +259,7 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
         entry = get_free_entry(&info->large_op_queue, &info->small_op_queue);
     }
 
-    if (entry) {
+    if (entry != NULL) {
         node = (struct op_node *) entry;
         ret = device_uart_start_receiver(info->dev, node->buffer,
                                          node->op_buf_size,
@@ -273,16 +273,14 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
         }
     }
 
-    if (!entry) {
+    if (entry == NULL) {
         /*
          * if there is no free operation, the rx thread will engage another
          * uart receiver.
          */
         info->need_free_node = 1;
-        if (length > OP_BUF_SIZE_SMALL)
-            info->last_op_size = OP_BUF_SIZE_LARGE;
-        else
-            info->last_op_size = OP_BUF_SIZE_SMALL;
+        info->last_op_size = (length > OP_BUF_SIZE_SMALL) ? OP_BUF_SIZE_LARGE :
+                                                            OP_BUF_SIZE_SMALL;   
     }
 
     sem_post(&info->rx_sem);
@@ -290,7 +288,9 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
 
 
 /**
-* @brief This function parses the UART modem and line status to the bitmask of
+* @brief Parse the modem and line stauts
+*
+* This function parses the UART modem and line status to the bitmask of
 * protocol serial state.
 *
 * @param data the regular thread data.
@@ -327,7 +327,9 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 
 
 /**
-* @brief This function is the thread for processing modem and line status
+* @brief Modem and line status process thread
+*
+* This function is the thread for processing modem and line status
 * change. It uses the operation to send the event to the peer. It only sends the
 * required status for protocol, not the all status in UART.
 *
@@ -337,22 +339,26 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 static void *uart_status_thread(void *data)
 {
     uint16_t updated_status = 0;
-    int ret;
+    int ret = SUCCESS;
 
     while (1) {
         sem_wait(&info->status_sem);
 
         updated_status = parse_ms_ls_registers(info->updated_ms,
                                                info->updated_ls);
-
+        /*
+         * Only send the status bits protocol cares and have changed to peer
+         */
         if (info->last_serial_state ^ updated_status) {
-
             info->last_serial_state = updated_status;
 
             info->ms_ls_request->control = 0; /* TODO: no info in spec */
             info->ms_ls_request->data = updated_status;
             ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
-            if (ret) {
+            if (ret != SUCCESS) {
+                /*
+                 *  TODO: heandle this error
+                 */
                 lldbg("-status_thread: Can't report event : %d\n", ret);
             }
         }
@@ -362,7 +368,9 @@ static void *uart_status_thread(void *data)
 
 
 /**
-* @brief This function is the thread for processing data receiving tasks. When
+* @brief Data receiving process thread
+*
+* This function is the thread for processing data receiving tasks. When
 * it wake up, it checks the receiving queue for processing the come in data.
 * If the operation is large size but the data is small, it requests a small
 * operation to tranfer for saving time.
@@ -374,10 +382,10 @@ static void *uart_status_thread(void *data)
 */
 static void *uart_rx_thread(void *data)
 {
-    struct op_node *node, *small_node;
-    sq_entry_t *entry, *small_entry;
-    int ret;
-    irqstate_t flags;
+    struct op_node *node = NULL, *small_node = NULL;
+    sq_entry_t *entry = NULL, *small_entry = NULL;
+    int ret = SUCCESS;
+    irqstate_t flags = 0;
 
     while (1) {
         sem_wait(&info->rx_sem);
@@ -385,38 +393,48 @@ static void *uart_rx_thread(void *data)
         if (!sq_empty(&info->received_op_queue)) {
             entry = sq_remfirst(&info->received_op_queue);
             node = (struct op_node *) entry;
+            /*
+             * if the operation is large size but the data length is small,
+             * change the operation for saving transfer time
+             */
             if ((node->op_buf_size == OP_BUF_SIZE_LARGE) &&
                 (*node->size <= OP_BUF_SIZE_SMALL) &&
                 (!sq_empty(&info->small_op_queue))) {
-
+                /* prevent callback request op at same time */
                 flags = irqsave();
-
                 small_entry = sq_remfirst(&info->small_op_queue);
-
                 irqrestore(flags);
 
                 small_node = (struct op_node *) small_entry;
                 memcpy(small_node->buffer, node->buffer, node->size);
                 *small_node->size = *node->size;
-
-                sq_addlast(entry, &info->large_op_queue);
+                recycle_op_node(node);
 
                 ret = gb_operation_send_request(small_node->operation, NULL,
                                                 false);
-                if (ret) {
+                if (ret != SUCCESS) {
+                    /*
+                     * TODO: need to handle this error
+                     */
                     lldbg("-rx_thread: Can't send request : %d\n", ret);
                 }
-                sq_addlast(small_entry, &info->small_op_queue);
+                recycle_op_node(small_node);
             } else {
                 ret = gb_operation_send_request(node->operation, NULL, false);
-                if (ret) {
+                if (ret != SUCCESS) {
+                    /*
+                     * TODO: need to handle this error
+                     */
                     lldbg("-rx_thread: Can't send request : %d\n", ret);
                 }
-                sq_addlast(entry, &info->large_op_queue);
+                recycle_op_node(node);
             }
         }
 
-        if (info->need_free_node) {
+        /*
+         * In case the callback can't get free node
+         */
+        if (info->need_free_node == 1) {
             if (info->last_op_size == OP_BUF_SIZE_LARGE) {
                 entry = get_free_entry(&info->large_op_queue,
                                        &info->small_op_queue);
@@ -425,17 +443,23 @@ static void *uart_rx_thread(void *data)
                 entry = get_free_entry(&info->small_op_queue,
                                        &info->large_op_queue);
             }
-            if (entry) {
+            if (entry != NULL) {
                 node = (struct op_node *) entry;
                 ret = device_uart_start_receiver(info->dev, node->buffer,
                                                  node->op_buf_size, 10, 0, NULL,
                                                  uart_rx_callback);
                 info->need_free_node = 0;
                 if (ret) {
+                    /*
+                     * TODO: need to hanlde this error
+                     */
                     lldbg("-rx_thread: driver error in receiving : %d\n", ret);
                 }
             }
             else {
+                /*
+                 * TODO: need to handle this error
+                 */
                 lldbg("-rx_thread: No entry to continue : %d\n", ret);
             }
         }
@@ -466,7 +490,9 @@ static void uart_status_cb_deinit(void)
 
 
 /**
-* @brief This function creates one operations and uses that request of operation
+* @brief Modem and line status event init process
+*
+* This function creates one operations and uses that request of operation
 * for sending the status change event to peer.
 *
 * @param None.
@@ -477,7 +503,7 @@ static void uart_status_cb_deinit(void)
 */
 static int uart_status_cb_init(void)
 {
-    int ret = OK;
+    int ret = SUCCESS;
 
     info->ms_ls_operation = gb_operation_create(info->cport,
                                     GB_UART_TYPE_SERIAL_STATE,
@@ -490,16 +516,16 @@ static int uart_status_cb_init(void)
                     gb_operation_get_request_payload(info->ms_ls_operation);
 
     ret = sem_init(&info->status_sem, 0, 0);
-    if (!ret) {
+    if (ret != SUCCESS) {
         return -ret;
     }
 
     ret = pthread_create(&info->status_thread, NULL, uart_status_thread, info);
-    if (ret) {
+    if (ret != SUCCESS) {
         return -ret;
     }
 
-    return OK;
+    return SUCCESS;
 }
 
 
@@ -513,10 +539,10 @@ static int uart_status_cb_init(void)
 */
 static void uart_receiver_cb_deinit(void)
 {
-    struct op_node *node;
-    sq_entry_t *entry;
+    struct op_node *node = NULL;
+    sq_entry_t *entry = NULL;
 
-    if (info->rx_thread) {
+    if (info->rx_thread != NULL) {
         pthread_kill(info->rx_thread, SIGKILL);
     }
 
@@ -544,7 +570,9 @@ static void uart_receiver_cb_deinit(void)
 
 
 /**
-* @brief This function creates operations and uses those request of operation as
+* @brief Reserve operations for receiving data
+*
+* This function creates operations and uses those request of operation as
 * data buffer prevent the data copy. It adds those operations into a queue.
 *
 * @param op_size the size of request in operation.
@@ -556,10 +584,10 @@ static void uart_receiver_cb_deinit(void)
 */
 static int create_operations(int op_size, sq_queue_t *queue, int num)
 {
-    struct gb_operation *operation;
-    struct gb_uart_receive_data_request *request;
-    struct op_node *node;
-    int i;
+    struct gb_operation *operation = NULL;
+    struct gb_uart_receive_data_request *request = NULL;
+    struct op_node *node = NULL;
+    int i = 0;
 
     for (i = 0; i < num; i++) {
         operation = gb_operation_create(info->cport,
@@ -580,12 +608,14 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
             return -ENOMEM;
         }
     }
-    return 0;
+    return SUCCESS;
 }
 
 
 /**
-* @brief This function allocates OS resource to support the data receiving
+* @brief Receiving data process initialization
+*
+* This function allocates OS resource to support the data receiving
 * function. It allocates two types of operations for undetermined length of
 * data. The semaphore works as message queue and all tasks are done in the
 * thread.
@@ -599,7 +629,7 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
 */
 static int uart_receiver_cb_init(void)
 {
-    int ret;
+    int ret = SUCCESS;
 
     sq_init(&info->small_op_queue);
     sq_init(&info->large_op_queue);
@@ -607,27 +637,27 @@ static int uart_receiver_cb_init(void)
 
     ret = create_operations(OP_BUF_SIZE_LARGE, &info->large_op_queue,
                             NUM_LARGE_OPERATION);
-    if (!ret) {
+    if (ret != SUCCESS) {
         return -ENOMEM;
     }
 
     ret = create_operations(OP_BUF_SIZE_SMALL, &info->small_op_queue,
                             NUM_SMALL_OPERATION);
-    if (!ret) {
+    if (ret != SUCCESS) {
         return -ENOMEM;
     }
 
     ret = sem_init(&info->rx_sem, 0, 0);
-    if (ret != OK) {
+    if (ret != SUCCESS) {
         return ret;
     }
 
     ret = pthread_create(&info->rx_thread, NULL, uart_rx_thread, info);
-    if (ret) {
+    if (ret != SUCCESS) {
         return ret;
     }
 
-    return 0;
+    return SUCCESS;
 }
 
 
@@ -668,8 +698,8 @@ static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
 */
 static uint8_t gb_uart_send_data(struct gb_operation *operation)
 {
-    int ret;
-    int sent;
+    int ret = SUCCESS;
+    int sent = 0;
     struct gb_uart_send_data_request *request;
 
     request = (struct gb_uart_send_data_request *)
@@ -677,7 +707,7 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
 
     ret = device_uart_start_transmitter(info->dev, request->data,
                                         request->size, 0, 0, &sent, NULL);
-    if (ret) {
+    if (ret != SUCCESS) {
         return GB_OP_MALFUNCTION;
     }
 
@@ -697,8 +727,8 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
 static uint8_t gb_uart_receive_data(struct gb_operation *operation)
 {
     /*
-     * In spec, the Greybus UART serial state operation is initiated by the
-     * Module implementing the UART Protocol
+     * TODO: In spec, the Greybus UART serial state operation is initiated by
+     * the Module implementing the UART Protocol, needs to clarify.
      */
     return GB_OP_SUCCESS;
 }
@@ -718,9 +748,9 @@ static uint8_t gb_uart_receive_data(struct gb_operation *operation)
 */
 static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 {
-    int ret;
+    int ret = SUCCESS;
     int baud, parity, databits, stopbit, flow;
-    struct gb_serial_line_coding_request *request;
+    struct gb_serial_line_coding_request *request = NULL;
 
     request = (struct gb_serial_line_coding_request *)
                   gb_operation_get_request_payload(operation);
