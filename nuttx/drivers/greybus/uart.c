@@ -175,7 +175,7 @@ static struct sq_entry_s *get_free_entry(sq_queue_t *first, sq_queue_t *second)
 */
 void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
-    sq_entry_t *entry;
+    sq_entry_t *entry = NULL;
     struct op_node *node;
 
     if (error == -EIO) {
@@ -264,7 +264,7 @@ static void *uart_status_thread(void *data)
         sem_wait(&info->status_sem);
 
         updated_status = parse_ms_ls_registers(info->updated_ms,
-            info->updated_ls);
+                                               info->updated_ls);
 
         if (info->last_serial_state ^ updated_status) {
 
@@ -273,8 +273,9 @@ static void *uart_status_thread(void *data)
             info->ms_ls_request->control = 0; /* TODO: no info in spec */
             info->ms_ls_request->data = updated_status;
             ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
-            if (ret)
+            if (ret) {
                 lldbg("-status_thread: Can't report event : %d\n", ret);
+            }
         }
     }
     return NULL;
@@ -373,7 +374,7 @@ static void *uart_rx_thread(void *data)
 * @retval 0 sussess to operate.
 * @retval EIO driver driver errors.
 */
-static int uart_status_cb_deinit(void)
+static void uart_status_cb_deinit(void)
 {
     if (info->status_thread) {
         pthread_kill(info->status_thread, SIGKILL);
@@ -382,8 +383,6 @@ static int uart_status_cb_deinit(void)
     if (info->ms_ls_operation) {
         gb_operation_destroy(info->ms_ls_operation);
     }
-
-    return OK;
 }
 
 
@@ -399,7 +398,7 @@ static int uart_status_cb_deinit(void)
 */
 static int uart_status_cb_init(void)
 {
-    int ret;
+    int ret = OK;
 
     info->ms_ls_operation = gb_operation_create(info->cport,
                                     GB_UART_TYPE_SERIAL_STATE,
@@ -421,7 +420,7 @@ static int uart_status_cb_init(void)
         return -ret;
     }
 
-    return 0;
+    return OK;
 }
 
 
@@ -493,7 +492,7 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
 
             request = (struct gb_uart_receive_data_request *)
                                 gb_operation_get_request_payload(operation);
-            node->size   = &request->size;
+            node->size = &request->size;
             node->buffer = request->data;
             node->op_buf_size = op_size;
             sq_addlast(&node->entry, queue);
@@ -565,7 +564,7 @@ static int uart_receiver_cb_init(void)
 */
 static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
 {
-    struct gb_uart_proto_version_response *response;
+    struct gb_uart_proto_version_response *response = NULL;
 
     response = gb_operation_alloc_response(operation, sizeof(*response));
     if (!response)
@@ -618,6 +617,10 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
 */
 static uint8_t gb_uart_receive_data(struct gb_operation *operation)
 {
+    /*
+     * In spec, the Greybus UART serial state operation is initiated by the
+     * Module implementing the UART Protocol
+     */
     return GB_OP_SUCCESS;
 }
 
@@ -653,6 +656,8 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
         stopbit = TWO_STOP_BITS;
     } else {
         ret = GB_OP_INVALID;
+        /* The spec doesn't describe how to response the invalid value
+         * need to clarify */
     }
 
     if (request->parity == GB_SERIAL_NO_PARITY) {
@@ -667,6 +672,8 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
         parity = SPACE_PARITY;
     } else {
         ret = GB_OP_INVALID;
+        /* The spec doesn't describe how to response the invalid value
+         * need to clarify */
     }
 
     databits = request->data;
@@ -713,6 +720,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     else {
         modem_ctrl &= ~MCR_DTR;
     }
+    
     if (request->control & GB_UART_CTRL_RTS) {
         modem_ctrl |= MCR_RTS;
     }
