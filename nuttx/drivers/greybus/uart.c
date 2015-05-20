@@ -757,32 +757,47 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 
     baud = request->rate;
 
-    if (request->format == GB_SERIAL_1_STOP_BITS) {
+    switch (request->format) {
+    case GB_SERIAL_1_STOP_BITS:
         stopbit = ONE_STOP_BIT;
-    } else if (request->format == GB_SERIAL_1_5_STOP_BITS) {
+        break;
+    case GB_SERIAL_1_5_STOP_BITS:
         stopbit = ONE5_STOP_BITS;
-    } else if (request->format == GB_SERIAL_2_STOP_BITS) {
+        break;
+    case GB_SERIAL_2_STOP_BITS:
         stopbit = TWO_STOP_BITS;
-    } else {
+        break;
+    default:
         ret = GB_OP_INVALID;
-        /* The spec doesn't describe how to response the invalid value
-         * need to clarify */
+        /*
+         * The spec doesn't describe how to response the invalid value
+         * need to clarify
+         */
     }
 
-    if (request->parity == GB_SERIAL_NO_PARITY) {
+    switch (request->parity) {
+    case GB_SERIAL_NO_PARITY:
         parity = NO_PARITY;
-    } else if (request->parity == GB_SERIAL_ODD_PARITY) {
+        break;
+    case GB_SERIAL_ODD_PARITY:
         parity = ODD_PARITY;
-    } else if (request->parity == GB_SERIAL_EVEN_PARITY) {
+        break;
+    case GB_SERIAL_EVEN_PARITY:
         parity = EVEN_PARITY;
-    } else if (request->parity == GB_SERIAL_MARK_PARITY) {
+        break;
+    case GB_SERIAL_MARK_PARITY:
         parity = MARK_PARITY;
-    } else if (request->parity == GB_SERIAL_SPACE_PARITY) {
+        break;
+    case GB_SERIAL_SPACE_PARITY:
         parity = SPACE_PARITY;
-    } else {
+        break;
+    default:
         ret = GB_OP_INVALID;
-        /* The spec doesn't describe how to response the invalid value
-         * need to clarify */
+        /*
+         * The spec doesn't describe how to response the invalid value
+         * need to clarify
+         */
+        break; 
     }
 
     databits = request->data;
@@ -791,7 +806,7 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 
     ret = device_uart_set_configuration(info->dev, baud, parity, databits,
                                         stopbit, flow);
-    if (ret) {
+    if (ret != SUCCESS) {
         return GB_OP_MALFUNCTION;
     }
 
@@ -811,15 +826,15 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 */
 static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 {
-    int ret;
-    uint8_t modem_ctrl;
-    struct gb_uart_set_control_line_state_request *request;
+    int ret SUCCESS;
+    uint8_t modem_ctrl = 0;
+    struct gb_uart_set_control_line_state_request *request = NULL;
 
     request = (struct gb_uart_set_control_line_state_request *)
                   gb_operation_get_request_payload(operation);
 
     ret = device_uart_get_modem_ctrl(info->dev, &modem_ctrl);
-    if (ret) {
+    if (ret != SUCCESS) {
         return GB_OP_MALFUNCTION;
     }
 
@@ -838,7 +853,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     }
 
     ret = device_uart_set_modem_ctrl(info->dev, &modem_ctrl);
-    if (ret) {
+    if (ret != SUCCESS) {
         return GB_OP_MALFUNCTION;
     }
 
@@ -858,14 +873,14 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 */
 static uint8_t gb_uart_send_break(struct gb_operation *operation)
 {
-    int ret;
-    struct gb_uart_set_break_request *request;
+    int ret = SUCCESS;
+    struct gb_uart_set_break_request *request = NULL;
 
     request = (struct gb_uart_set_break_request *)
                   gb_operation_get_request_payload(operation);
 
     ret = device_uart_set_break(info->dev, request->state);
-    if (ret) {
+    if (ret != SUCCESS) {
         return GB_OP_MALFUNCTION;
     }
 
@@ -886,8 +901,8 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
 static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 {
     /*
-     * In spec, the Greybus UART serial state operation is initiated by the
-     * Module implementing the UART Protocol
+     * TODO: In spec, the Greybus UART serial state operation is initiated by
+     * the Module implementing the UART Protocol.
      */
     return GB_OP_SUCCESS;
 }
@@ -907,11 +922,11 @@ static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 */
 static int gb_uart_init(unsigned int cport)
 {
-    int ret;
-    uint8_t ms, ls;
+    int ret = SUCCESS;
+    uint8_t ms = 0, ls = 0;
 
     info = zalloc(sizeof(*info));
-    if (!info) {
+    if (info == NULL) {
         return GB_OP_NO_MEMORY;
     }
 
@@ -920,12 +935,12 @@ static int gb_uart_init(unsigned int cport)
     info->cport = cport;
 
     ret = uart_status_cb_init();
-    if (ret) {
+    if (ret != SUCCESS) {
         goto init_err;
     }
 
     ret = uart_receiver_cb_init();
-    if (ret) {
+    if (ret != SUCCESS) {
         goto init_err;
     }
 
@@ -936,24 +951,24 @@ static int gb_uart_init(unsigned int cport)
 
     /* update serial status */
     ret = device_uart_get_modem_status(info->dev, &ms);
-    if (ret) {
+    if (ret != SUCCESS) {
         goto init_err;
     }
 
     ret = device_uart_get_modem_status(info->dev, &ls);
-    if (ret) {
+    if (ret != SUCCESS) {
         goto init_err;
     }
 
     info->last_serial_state = parse_ms_ls_registers(ms, ls);
 
     ret = device_uart_attach_ms_callback(info->dev, uart_ms_callback);
-    if (ret) {
+    if (ret != SUCCESS) {
         goto init_err;
     }
 
     ret = device_uart_attach_ls_callback(info->dev, uart_ls_callback);
-    if (ret) {
+    if (ret != SUCCESS) {
         goto init_err;
     }
 
