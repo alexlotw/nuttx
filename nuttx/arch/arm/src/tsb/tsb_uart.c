@@ -70,6 +70,7 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
  */
 static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
+	 lldbg("tsb_uart_get_modem_ctrl   \n"); /* XXX */
     return 0;
 }
 
@@ -223,7 +224,7 @@ err_irqrestore:
 static int tsb_uart_dev_probe(struct device *dev)
 {
     struct tsb_uart_info *info;
-    struct tsb_uart_init_data *init_data = dev->init_data;
+    //struct tsb_uart_init_data *init_data = dev->init_data;
     irqstate_t flags;
     int ret;
 
@@ -231,7 +232,8 @@ static int tsb_uart_dev_probe(struct device *dev)
     if (!info)
         return -ENOMEM;
 
-lldbg("LL uart info struct: 0x%08p\n", info); /* XXX */
+	lldbg("tsb_uart_dev_probe  +++ \n"); /* XXX */
+	lldbg("LL uart info struct: 0x%08p\n", info); /* XXX */
 
     flags = irqsave();
 
@@ -239,9 +241,9 @@ lldbg("LL uart info struct: 0x%08p\n", info); /* XXX */
     //if (ret != OK)
     //    goto err_irqrestore;
 
-    ret = irq_attach(TSB_IRQ_UART, tsb_uart_irq);
-    if (ret != OK)
-        goto err_irqrestore;
+//    ret = irq_attach(TSB_IRQ_UART, tsb_uart_irq);
+//    if (ret != OK)
+//        goto err_irqrestore;
     
     //tsb_clr_pinshare(TSB_PIN_ETM);
 
@@ -250,7 +252,7 @@ lldbg("LL uart info struct: 0x%08p\n", info); /* XXX */
     //saved_dev = dev;
 
     irqrestore(flags);
-
+	lldbg("tsb_uart_dev_probe ---  \n"); /* XXX */
     return OK;
 
 //err_detach_sierr_irq:

@@ -127,13 +127,33 @@ static inline int device_uart_set_configuration(struct device *dev,
 static inline int device_uart_get_modem_ctrl(struct device *dev,
                                              uint8_t *modem_ctrl)
 {
+	lldbg("device_uart_get_modem_ctrl +++   \n"); /* XXX */
+
     if (dev->state != DEVICE_STATE_OPEN)
         return -ENODEV;
+	lldbg("device_uart_get_modem_ctrl 1   \n"); /* XXX */
 
+
+    if (dev->driver)
+    {
+		lldbg("device_uart_get_modem_ctrl driver   \n"); /* XXX */
+	}
+	
+	if (dev->driver->ops)
+    {
+		lldbg("device_uart_get_modem_ctrl ops   \n"); /* XXX */
+	}
+	
+	
+	
     if (dev->driver->ops->type_ops.uart->get_modem_ctrl)
+    {
+		lldbg("device_uart_get_modem_ctrl 2   \n"); /* XXX */
         return dev->driver->ops->type_ops.uart->
                     get_modem_ctrl(dev, modem_ctrl);
-
+	}
+	lldbg("device_uart_get_modem_ctrl ---   \n"); /* XXX */
+	
     return -EOPNOTSUPP;
 }
 

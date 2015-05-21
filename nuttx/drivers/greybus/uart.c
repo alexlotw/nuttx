@@ -166,12 +166,15 @@ static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
 {
     struct gb_uart_proto_version_response *response;
 
+	lldbg("gb_uart_protocol_version +++  \n"); /* XXX */
+
     response = gb_operation_alloc_response(operation, sizeof(*response));
     if (!response)
         return GB_OP_NO_MEMORY;
 
     response->major = GB_UART_VERSION_MAJOR;
     response->minor = GB_UART_VERSION_MINOR;
+    lldbg("gb_uart_protocol_version ---  \n"); /* XXX */
     return GB_OP_SUCCESS;
 }
 
@@ -217,6 +220,8 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
     int ret;
     int baud, parity, databits, stopbit, flow;
     struct gb_serial_line_coding_request *request;
+    
+    lldbg("gb_uart_set_line_coding +++  \n"); /* XXX */
     
     request = (struct gb_serial_line_coding_request *)
                   gb_operation_get_request_payload(operation);
@@ -269,10 +274,18 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     uint8_t modem_ctrl;
     struct gb_uart_set_control_line_state_request *request;
     
+     lldbg("gb_uart_set_control_line_state +++  \n"); /* XXX */
+     
+  
+   
     request = (struct gb_uart_set_control_line_state_request *)
                   gb_operation_get_request_payload(operation);
 
+	lldbg("gb_uart_set_control_line_state 1  \n"); /* XXX */
+	
     ret = device_uart_get_modem_ctrl(info->dev, &modem_ctrl);
+    
+    lldbg("gb_uart_set_control_line_state 2  \n"); /* XXX */
     
     if (request->control & GB_UART_CTRL_DTR) {
         modem_ctrl |= MCR_DTR;
@@ -287,11 +300,14 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
         modem_ctrl &= ~MCR_RTS;
     }
 
+	lldbg("gb_uart_set_control_line_state 3  \n"); /* XXX */
     ret = device_uart_set_modem_ctrl(info->dev, &modem_ctrl);
+    lldbg("gb_uart_set_control_line_state 4  \n"); /* XXX */
     if (ret) {
         
     }
 
+	lldbg("gb_uart_set_control_line_state ---  \n"); /* XXX */
     return GB_OP_SUCCESS;
 }
 
@@ -335,24 +351,22 @@ static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 static uint8_t gb_uart_serial_state_init(void)
 {
 	
+	
+	lldbg("gb_uart_serial_state_init +++  \n"); /* XXX */
 
     info->ms_ls_request = (struct gb_uart_serial_state_request *)
                     gb_operation_get_request_payload(info->ms_ls_operation);
 	 
-
 	info->ms_ls_operation = gb_operation_create(info->cport,
                                     GB_UART_TYPE_SERIAL_STATE,
                                     sizeof(*info->ms_ls_request));
    	
-
 
     int ret;
     uint16_t data = 0;
     uint8_t ms_data, ls_data;
 
 
-    device_uart_get_modem_status(info->dev, &ms_data);
-    device_uart_get_line_status(info->dev, &ls_data);
     
     if (ms_data & MSR_DCD) {
         data |= GB_UART_CTRL_DCD;
@@ -380,6 +394,9 @@ static uint8_t gb_uart_serial_state_init(void)
     info->ms_ls_request->data = data;
     
 	
+	
+	lldbg("gb_uart_serial_state_init ---  \n"); /* XXX */
+	
     return GB_OP_SUCCESS;
 }
 
@@ -390,7 +407,7 @@ static uint8_t gb_uart_serial_state_init(void)
 static int gb_uart_init(unsigned int cport)
 {
     int ret;
-    struct gb_uart_info *info;
+    //struct gb_uart_info *info;
     unsigned int i;
 
 
@@ -398,17 +415,20 @@ static int gb_uart_init(unsigned int cport)
     if (!info)
         return -ENOMEM;
 
-    lldbg("GB uart info struct: 0x%08p\n", info); /* XXX */
+   /// lldbg("GB uart info struct: 0x%08p\n", info); /* XXX */
+    lldbg("gb_uart_init +++ \n"); /* XXX */
 
     info->cport = cport;
 
+	lldbg("gb_uart_init cport = %d \n", cport); /* XXX */
+	
     ret = sem_init(&info->uart_sem, 0, 0);
  
- 
+	
  
 	gb_uart_serial_state_init();
                     
- 
+	
     
     ret = pthread_create(&info->uart_thread, NULL, gb_uart_thread, info);    
 
@@ -423,6 +443,7 @@ static int gb_uart_init(unsigned int cport)
         goto err_kill_pthread;
     }
 
+	lldbg("gb_uart_init --- \n"); /* XXX */
     return 0;
 
 err_kill_pthread:
