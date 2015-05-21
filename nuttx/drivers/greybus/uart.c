@@ -66,16 +66,34 @@
 #define GB_UART_VERSION_MAJOR   0
 #define GB_UART_VERSION_MINOR   1
 
+/* reserved operations for data buffer */
 #define NUM_SMALL_OPERATION     5
 #define NUM_LARGE_OPERATION     5
 
 #define OP_BUF_SIZE_SMALL       32
 #define OP_BUF_SIZE_LARGE       128
 
+/* whether protocol request DMA support */
+#define DMA_OFF                 0
+#define DMA_ON                  1
+
+/* error code */
+#define SUCCESS                 0
+
+/* signal */
 #ifndef SIGKILL
 #define SIGKILL     9
 #endif
 
+/**
+ * struct op_node - the operation control block
+ *
+ * @param entry: queue entry
+ * @param operation: pointer to operation
+ * @param size: pointer to size of request in operation
+ * @param buffer: pointer to buffer of request in operation
+ * @param op_buf_size: buffer size in operation.
+ */
 struct op_node {
     sq_entry_t          entry;
     struct gb_operation *operation;
@@ -84,6 +102,27 @@ struct op_node {
     int                 op_buf_size;
 };
 
+/**
+ * struct gb_uart_info - uart protocol global information
+ *
+ * @param cport: cport from greybus
+ * @param updated_ms: updated modem status from uart through callback
+ * @param updated_ls: updated line status from uart through callback
+ * @param last_serial_state: the last status sent to the peer.
+ * @param ms_ls_operation: reserved operation for status report.
+ * @param ms_ls_request: request in reserved operation.
+ * @param status_sem: status change semaphore
+ * @param status_thread: status change thread handle
+ * @param small_op_queue: available small operation queue
+ * @param large_op_queue: available large operation queue
+ * @param received_op_queue: received data operation queue
+ * @param working_op_node: op_node working in uart driver
+ * @param need_free_node: flag for requesting a free operation in callback
+ * @param last_op_size: keeps the last operation size
+ * @param rx_sem: semaphore for notifying data received
+ * @param rx_thread: receiving data process threed
+ * @param dev: uart driver handle
+ */
 struct gb_uart_info {
     uint16_t            cport;
 
@@ -107,12 +146,15 @@ struct gb_uart_info {
     struct device   *dev;
 };
 
+/* the structure for keeping protocol global data */
 static struct gb_uart_info *info;
 
 
 /**
-* @brief Callback for device driver modem status changes. This function can be
-* called when device driver detect modem status changes.
+* @brief Callback for modem status change
+*
+* Callback for device driver modem status changes. This function can be called
+* when device driver detect modem status changes.
 *
 * @param ms the updated modem status
 * @return none
@@ -120,13 +162,16 @@ static struct gb_uart_info *info;
 static void uart_ms_callback(uint8_t ms)
 {
     info->updated_ms = ms;
+
     sem_post(&info->status_sem);
 }
 
 
 /**
-* @brief Callback for device driver line status changes. This function can be
-* called when device driver detect line status changes.
+* @brief Callback for line status change
+*
+* Callback for device driver line status changes. This function can be called
+* when device driver detect line status changes.
 *
 * @param ms the updated modem status
 * @return none
@@ -134,6 +179,7 @@ static void uart_ms_callback(uint8_t ms)
 static void uart_ls_callback(uint8_t ls)
 {
     info->updated_ls = ls;
+
     sem_post(&info->status_sem);
 }
 
@@ -150,20 +196,34 @@ static void uart_ls_callback(uint8_t ls)
 * @return an available entry
 * @retval NULL for no entry available.
 */
-static struct sq_entry_s *get_free_entry(sq_queue_t *first, sq_queue_t *second)
+static sq_entry_t *get_free_entry(sq_queue_t *first, sq_queue_t *second)
 {
-    if (!sq_empty(first)) {
-        return sq_remfirst(first);
-    } else if (!sq_empty(second)) {
-        return sq_remfirst(second);
-    } else {
-        return NULL;
-    }
+    return sq_empty(first) ? sq_empty(first) ?  NULL : sq_remfirst(second) :
+                             sq_remfirst(first);
 }
 
 
 /**
-* @brief The callback function provided to device driver for being notified when
+* @brief Free entry to two queues.
+*
+* This function put the node back to small or large queue for reuse.
+*
+* @param node the node to reuse
+* @return None
+*/
+static void recycle_op_node(struct op_node *node)
+{
+    sq_queue_t *queue = (node->op_buf_size == OP_BUF_SIZE_SMALL) ?
+                            &info->small_op_queue : &info->large_op_queue;
+
+    sq_addlast(&node->entry, queue);
+}
+
+
+/**
+* @brief Callback of data receiving
+*
+* The callback function provided to device driver for being notified when
 * driver received a data stream.
 * It put the current operation to received queue and gets another operation to
 * continue receiving. Then notifies rx thread to process.
@@ -176,17 +236,23 @@ static struct sq_entry_s *get_free_entry(sq_queue_t *first, sq_queue_t *second)
 void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
     sq_entry_t *entry = NULL;
-    struct op_node *node;
+    struct op_node *node = NULL;
+    int ret = SUCCESS;
 
     if (error == -EIO) {
-        /* Don't need to process, the line or modem error will process
-         * in ms & ls callback, it just need to send the received data
-         * to peer */
+        /*
+         * Don't need to process, the line or modem error will process
+         * in ms & ls callback, anyway it just need to send the received data
+         * to peer
+         */
     }
 
     *info->working_op_node->size = length;
     sq_addlast(&info->working_op_node->entry, &info->received_op_queue);
 
+    /*
+     * Request a free operation due to the last data length
+     */
     if (length < OP_BUF_SIZE_SMALL) {
         entry = get_free_entry(&info->small_op_queue, &info->large_op_queue);
     } else {
@@ -195,10 +261,23 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
 
     if (entry) {
         node = (struct op_node *) entry;
-        device_uart_start_receiver(info->dev, node->buffer, node->op_buf_size,
-                                   10, 0, NULL, uart_rx_callback);
-        info->working_op_node = node;
-    } else {
+        ret = device_uart_start_receiver(info->dev, node->buffer,
+                                         node->op_buf_size,
+                                         10, DMA_OFF, NULL, uart_rx_callback);
+        if (ret == SUCCESS) {
+            info->working_op_node = node;
+        }
+        else {
+            recycle_op_node(node);
+            entry = NULL;
+        }
+    }
+
+    if (!entry) {
+        /*
+         * if there is no free operation, the rx thread will engage another
+         * uart receiver.
+         */
         info->need_free_node = 1;
         if (length > OP_BUF_SIZE_SMALL)
             info->last_op_size = OP_BUF_SIZE_LARGE;
@@ -720,7 +799,7 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
     else {
         modem_ctrl &= ~MCR_DTR;
     }
-    
+
     if (request->control & GB_UART_CTRL_RTS) {
         modem_ctrl |= MCR_RTS;
     }
