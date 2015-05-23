@@ -63,6 +63,18 @@
 #include "tsb_scm.h"
 #include "tsb_uart.h"
 
+#define SUCCESS     0
+
+/**
+ * struct tsb_uart_info - the driver internal variable
+ *
+ * @param dev: device information
+ * @param flags: device flages
+ * @param ms_callback: modem status callback function pointer
+ * @param ls_callback: line status callback function pointer
+ * @param rx_callback: receiver callback function pointer
+ * @param tx_callback: transmitter callback function pointer
+ */
 struct tsb_uart_info {
     struct device   *dev;
     uint32_t        flags;
@@ -74,10 +86,12 @@ struct tsb_uart_info {
 
 
 /**
-* @brief This function is used to set the baud rate, parity, data bit and stop
-* bit settings in the UART controller.
+* @brief Set UART configurations for baudrate, parity, etc.
 *
-* @param dev pointer of the UART device structure
+* This function is used to set the baud rate, parity, data bit and stop bit
+* settings in the UART controller.
+*
+* @param dev pointer to the UART device structure
 * @param baud - the baud rate definition in Baud rate definition.
 * @param parity - the value of parity defined in Parity definition
 * @param databits - the number of data bits between 5 to 8 bits.
@@ -90,15 +104,17 @@ struct tsb_uart_info {
 static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
                                       int databits, int stopbit, int flow)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief This function is to get modem control state from the UART controller.
+* @brief Get Modem control state
 *
-* @param dev pointer of the UART device structure
+* This function is to get modem control state from the UART controller.
+*
+* @param dev pointer to the UART device structure
 * @param modem_ctrl output value as bitmask of Modem control definition.
 * @return
 * @retval SUCCESS Success.
@@ -106,15 +122,17 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 */
 static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief This function is to write modem control settings to UART controller.
+* @brief Set Modem control state
 *
-* @param dev pointer of the UART device structure
+* This function is to write modem control settings to UART controller.
+*
+* @param dev pointer to the UART device structure
 * @param modem_ctrl set value as bitmask of Modem control definition.
 * @return
 * @retval SUCCESS Success.
@@ -122,15 +140,17 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief This function is to get modem status from the UART controller.
+* @brief Get modem status
 *
-* @param dev pointer of the UART device structure
+* This function is to get modem status from the UART controller.
+*
+* @param dev pointer to the UART device structure
 * @param modem_status output value as bitmask of Modem status definition.
 * @return
 * @retval SUCCESS Success.
@@ -138,14 +158,16 @@ static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 /**
-* @brief The function is to get line status from the UART controller.
+* @brief Get line status
 *
-* @param dev pointer of the UART device structure
+* The function is to get line status from the UART controller.
+*
+* @param dev pointer to the UART device structure
 * @param line_status output value as bitmask of Line status definition.
 * @return
 * @retval SUCCESS Success.
@@ -153,15 +175,17 @@ static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 */
 static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief The function is to control break state of the UART controller.
+* @brief Control break state
 *
-* @param dev pointer of the UART device structure
+* The function is to control break state of the UART controller.
+*
+* @param dev pointer to the UART device structure
 * @param break_on break state value, it should be 0 or 1.
 * @return
 * @retval SUCCESS Success.
@@ -169,15 +193,16 @@ static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 */
 static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 /**
-* @brief This function registers a modem status (ms) callback function into the
-* driver.
+* @brief Attach the modem status change callback
 *
-* @param dev pointer of the UART device structure
+* This function registers a modem status (ms) callback function into the driver.
+*
+* @param dev pointer to the UART device structure
 * @param callback null means caller doesn’t need this event.
 * @return
 * @retval SUCCESS Success.
@@ -186,16 +211,18 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 static int tsb_uart_attach_ms_callback(struct device *dev,
                                        void (*callback)(uint8_t ms))
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief The function is to register a line status (ls) callback function into
-* the driver.
+* @brief Attach the line status change callback
 *
-* @param dev pointer of the UART device structure
+* The function is to register a line status (ls) callback function into the
+* driver.
+*
+* @param dev pointer to the UART device structure
 * @param callback null means caller doesn’t need this event.
 * @return
 * @retval SUCCESS Success.
@@ -204,16 +231,18 @@ static int tsb_uart_attach_ms_callback(struct device *dev,
 static int tsb_uart_attach_ls_callback(struct device *dev,
                                        void (*callback)(uint8_t ls))
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief This function is to transmit data through the UART controller.
+* @brief Start the transmitter
+*
+* This function is to transmit data through the UART controller.
 * It could be blocking or non-blocking and through DMA or PIO mode.
 *
-* @param dev pointer of the UART device structure
+* @param dev pointer to the UART device structure
 * @param buffer pointer of the buffer to send data to UART port.
 * @param length length of data.
 * @param timeout the timeout value in millisecond. If 0, it waits for all data
@@ -236,31 +265,34 @@ static int tsb_uart_start_transmitter(struct device *dev, uint8_t *buffer,
                                       void (*callback)(uint8_t *buffer,
                                                        int length, int error))
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 /**
-* @brief This function is to stop the data transmit in blocking or non-blocking
-* mode.
+* @brief Stop the transmitter
 *
-* @param dev pointer of the UART device structure
+* This function is to stop the data transmit in blocking or non-blocking mode.
+*
+* @param dev pointer to the UART device structure
 * @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
 static int tsb_uart_stop_transmitter(struct device *dev)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief The function is to receive data from UART controller. It could be
+* @brief Start the receiver
+*
+* The function is to receive data from UART controller. It could be
 * blocking or non-blocking and through DMA or PIO mode.
 *
-* @param dev pointer of the UART device structure
+* @param dev pointer to the UART device structure
 * @param buffer pointer of the buffer to receive data from UART port.
 * @param length length of data.
 * @param timeout the timeout value in millisecond. If 0, it waits for request
@@ -280,34 +312,37 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
                                    void (*callback)(uint8_t *buffer, int length,
                                                     int error))
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 /**
-* @brief The function is to stop the data receiving in blocking or non-blocking
-* mode.
+* @brief Stop the receiver
 *
-* @param dev pointer of the UART device structure
+* The function is to stop the data receiving in blocking or non-blocking mode.
+*
+* @param dev pointer to the UART device structure
 * @return
 * @retval SUCCESS Success.
 * @retval EINVAL Invalid parameters.
 */
 static int tsb_uart_stop_receiver(struct device *dev)
 {
-    /* TODO */
-    return 0;
+    /* TODO: to implement the function body */
+    return SUCCESS;
 }
 
 
 /**
-* @brief This function is called when protocol preparing to use the driver ops
+* @brief The device open function.
+*
+* This function is called when protocol preparing to use the driver ops
 * in initial stage. It is called after probe() was invoked by the system.
 * The function checks whether the driver is already open or not. If it was
 * opened, it returns driver busy error number, otherwise it keeps a flag to
 * identify the driver was opened and returns success.
 *
-* @param dev pointer of the UART device structure
+* @param dev pointer to the UART device structure
 * @return
 * @retval SUCCESS Success.
 * @retval EBUSY Driver is already opened.
@@ -316,11 +351,11 @@ static int tsb_uart_dev_open(struct device *dev)
 {
     struct tsb_uart_info *info = dev->private;
     irqstate_t flags;
-    int ret = 0;
+    int ret = SUCCESS;
 
     flags = irqsave();
 
-    /* TODO */
+    /* TODO: to implement the function body */
 
 err_irqrestore:
     irqrestore(flags);
@@ -330,10 +365,12 @@ err_irqrestore:
 
 
 /**
-* @brief This function is called when protocol no longer using this driver.
+* @brief The device close function
+*
+* This function is called when protocol no longer using this driver.
 * The driver must be opened before calling this function.
 *
-* @param dev pointer of the UART device structure
+* @param dev pointer to the UART device structure
 * @return None.
 */
 static void tsb_uart_dev_close(struct device *dev)
@@ -343,7 +380,7 @@ static void tsb_uart_dev_close(struct device *dev)
 
     flags = irqsave();
 
-    /* TODO */
+    /* TODO: to implement the function body */
 
     info->flags = 0;
 
@@ -353,12 +390,14 @@ err_irqrestore:
 
 
 /**
-* @brief This function is called by the system to register this driver when the
+* @brief The device probe function
+*
+* This function is called by the system to register this driver when the
 * system boots up.This function allocates memory for saving driver internal
 * information data, attaches the interrupt handlers to IRQs of the controller
 * and configures the pin settings of the UART controller.
 *
-* @param dev pointer of the UART device structure
+* @param dev pointer to the UART device structure
 * @return
 * @retval SUCCESS Success.
 * @retval ENOMEM Fail to allocate the memory for driver information.
@@ -379,14 +418,14 @@ static int tsb_uart_dev_probe(struct device *dev)
 
     flags = irqsave();
 
-    /* TODO */
+    /* TODO: to implement the function body */
 
     info->dev = dev;
     dev->private = info;
 
     irqrestore(flags);
 
-    return OK;
+    return SUCCESS;
 
 err_irqrestore:
     irqrestore(flags);
@@ -398,11 +437,13 @@ err_free_info:
 
 
 /**
-* @brief This function is called by the system to unregister this driver. It
+* @brief The device remove function
+*
+* This function is called by the system to unregister this driver. It
 * must be called after probe() and open(). It detaches IRQ handlers and frees
 * the internal information memory space.
 *
-* @param dev pointer of the UART device structure
+* @param dev pointer to the UART device structure
 * @return None.
 */
 static void tsb_uart_dev_remove(struct device *dev)
@@ -412,7 +453,7 @@ static void tsb_uart_dev_remove(struct device *dev)
 
     flags = irqsave();
 
-    /* TODO */
+    /* TODO: to implement the function body */
 
     dev->private = NULL;
 
@@ -452,6 +493,3 @@ struct device_driver tsb_uart_driver = {
     .desc       = "TSB UART Driver",
     .ops        = &tsb_uart_driver_ops,
 };
-
-
-

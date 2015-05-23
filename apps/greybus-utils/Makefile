@@ -100,6 +100,10 @@ ifeq ($(CONFIG_MANIFEST_LOOPBACK), y)
  MANIFEST = simple-loopback-module
 endif
 
+ifeq ($(CONFIG_MANIFEST_GPIO_I2C_UART), y)
+ MANIFEST = simple-gpio-i2c-uart-module
+endif
+
 ifeq ($(CONFIG_MANIFEST_CONSOLE), y)
  MANIFEST = simple-uart-module
 endif

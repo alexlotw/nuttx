@@ -97,9 +97,9 @@
  *
  * @param entry: queue entry
  * @param operation: pointer to operation
- * @param size: pointer to size of request in operation
+ * @param data_size: pointer to size of request in operation
  * @param buffer: pointer to buffer of request in operation
- * @param op_buf_size: buffer size in operation.
+ * @param buf_size: buffer size in operation.
  */
 struct op_node {
     sq_entry_t          entry;
@@ -123,7 +123,7 @@ struct op_node {
  * @param large_op_queue: available large operation queue
  * @param received_op_queue: received data operation queue
  * @param rx_node: op_node in receiving
- * @param need_free_node: flag for requesting a free operation in callback
+ * @param require_node: flag for requesting a free operation in callback
  * @param last_op_size: keeps the last operation size
  * @param rx_sem: semaphore for notifying data received
  * @param rx_thread: receiving data process threed
@@ -169,9 +169,9 @@ static struct gb_uart_info *info = NULL;
 */
 static int compute_timeout(uint8_t length)
 {
-    int byte_per_msec = info->baudrate >> 13; /* 1024 x 8 */
+    int byte_per_msec = info->baudrate >> 13; /* baudrate / (1024 x 8) */
 
-    return 2 * length / byte_per_msec ; /* 2 for buffering */
+    return 2 * length / byte_per_msec ; /* double the time for tolerance */
 }
 
 
@@ -265,19 +265,13 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
     int ret = SUCCESS;
     int timeout = 0;
 
-    if (error == -EIO) {
-        /*
-         * Don't need to process, the line or modem error will process
-         * in ms & ls callback, anyway it just need to send the received data
-         * to peer
-         */
-    }
-
     *info->rx_node->data_size = length;
     sq_addlast(&info->rx_node->entry, &info->received_op_queue);
 
     /*
-     * Request a free operation due to the last data length
+     * Request a free operation due to the last data length, if the buffer size
+     * is too large to a small data, it will use small operation to save
+     * trnasfer time.
      */
     if (length < OP_BUF_SIZE_SMALL) {
         node = get_node_from(&info->small_op_queue);
@@ -391,7 +385,8 @@ static void *uart_status_thread(void *data)
             ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
             if (ret != SUCCESS) {
                 /*
-                 *  TODO: heandle this error
+                 * TODO: heandle this error, there should be a event to host,
+                 * but it doesn't define it.
                  */
                 gb_info("%s(): operation send error \n", __func__);
             }
@@ -448,7 +443,8 @@ static void *uart_rx_thread(void *data)
                                             false);
             if (ret != SUCCESS) {
                 /*
-                 * TODO: need to handle this error
+                 * TODO: need to handle this error, there should be a event to
+                 * host, but it doesn't define it.
                  */
                 gb_info("%s(): operation send error \n", __func__);
             }
@@ -481,14 +477,16 @@ static void *uart_rx_thread(void *data)
                 info->require_node = 0;
                 if (ret) {
                     /*
-                     * TODO: need to hanlde this error
+                     * TODO: need to hanlde this error, there should be a event
+                     * to host, but it doesn't define it.
                      */
                     gb_info("%s(): driver error in receiving \n", __func__);
                 }
             }
             else {
                 /*
-                 * TODO: need to handle this error
+                 * TODO: need to handle this error, there should be a event to
+                 * host, but it doesn't define it.
                  */
                 gb_info("%s(): driver error in receiving \n", __func__);
             }
@@ -505,10 +503,12 @@ static void *uart_rx_thread(void *data)
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
-* @retval EIO driver driver errors.
+* @retval -EIO driver driver errors.
 */
 static void uart_status_cb_deinit(void)
 {
+    sem_destroy(&info->status_sem);
+    
     if (info->status_thread) {
         pthread_kill(info->status_thread, SIGKILL);
     }
@@ -528,15 +528,15 @@ static void uart_status_cb_deinit(void)
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
-* @retval ENOMEM no memory to allicate.
-* @retval EBUSY OS thread resource is busy.
+* @retval -ENOMEM no memory to allicate.
+* @retval -EBUSY OS thread resource is busy.
 */
 static int uart_status_cb_init(void)
 {
     int ret = SUCCESS;
 
     info->ms_ls_operation = gb_operation_create(info->cport,
-                                GB_UART_TYPE_SERIAL_STATE,
+                                GB_UART_PROTOCOL_SERIAL_STATE,
                                 sizeof(struct gb_uart_serial_state_request));
     if (!info->ms_ls_operation) {
         return -ENOMEM;
@@ -562,11 +562,13 @@ static int uart_status_cb_init(void)
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
-* @retval EIO driver driver errors.
+* @retval -EIO driver driver errors.
 */
 static void uart_receiver_cb_deinit(void)
 {
     struct op_node *node = NULL;
+
+    sem_destroy(&info->rx_sem);
 
     if (info->rx_thread != 0) {
         pthread_kill(info->rx_thread, SIGKILL);
@@ -603,7 +605,7 @@ static void uart_receiver_cb_deinit(void)
 * @param num how many operation in the queue.
 * @return return error code.
 * @retval 0 sussess to operate.
-* @retval ENOMEM no memory to allicate.
+* @retval -ENOMEM no memory to allicate.
 */
 static int create_operations(int op_size, sq_queue_t *queue, int num)
 {
@@ -614,7 +616,7 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
 
     for (i = 0; i < num; i++) {
         operation = gb_operation_create(info->cport,
-                                        GB_UART_TYPE_RECEIVE_DATA,
+                                        GB_UART_PROTOCOL_RECEIVE_DATA,
                                         sizeof(uint16_t) + op_size);
         if (operation) {
             node = (struct op_node *)malloc(sizeof(struct op_node));
@@ -646,9 +648,9 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
 * @param None.
 * @return return error code.
 * @retval 0 sussess to operate.
-* @retval ENOMEM no memory to allicate.
-* @retval EBUSY OS resource is busy.
-* @retval EIO OS resource is error.
+* @retval -ENOMEM no memory to allicate.
+* @retval -EBUSY OS resource is busy.
+* @retval -EIO OS resource is error.
 */
 static int uart_receiver_cb_init(void)
 {
@@ -750,7 +752,7 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
 static uint8_t gb_uart_receive_data(struct gb_operation *operation)
 {
     /*
-     * TODO: In spec, the Greybus UART serial state operation is initiated by
+     * TBD: In spec, the Greybus UART serial state operation is initiated by
      * the Module implementing the UART Protocol, needs to clarify.
      */
     return GB_OP_SUCCESS;
@@ -861,15 +863,13 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 
     if (request->control & GB_UART_CTRL_DTR) {
         modem_ctrl |= MCR_DTR;
-    }
-    else {
+    } else {
         modem_ctrl &= ~MCR_DTR;
     }
 
     if (request->control & GB_UART_CTRL_RTS) {
         modem_ctrl |= MCR_RTS;
-    }
-    else {
+    } else {
         modem_ctrl &= ~MCR_RTS;
     }
 
@@ -922,7 +922,7 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
 static uint8_t gb_uart_serial_state(struct gb_operation *operation)
 {
     /*
-     * TODO: In spec, the Greybus UART serial state operation is initiated by
+     * TBD: In spec, the Greybus UART serial state operation is initiated by
      * the Module implementing the UART Protocol.
      */
     return GB_OP_SUCCESS;
@@ -1031,14 +1031,14 @@ static void gb_uart_exit(unsigned int cport)
 
 
 static struct gb_operation_handler gb_uart_handlers[] = {
-    GB_HANDLER(GB_UART_TYPE_PROTOCOL_VERSION, gb_uart_protocol_version),
-    GB_HANDLER(GB_UART_TYPE_SEND_DATA, gb_uart_send_data),
-    GB_HANDLER(GB_UART_TYPE_RECEIVE_DATA, gb_uart_receive_data),
-    GB_HANDLER(GB_UART_TYPE_SET_LINE_CODING, gb_uart_set_line_coding),
-    GB_HANDLER(GB_UART_TYPE_SET_CONTROL_LINE_STATE,
+    GB_HANDLER(GB_UART_PROTOCOL_VERSION, gb_uart_protocol_version),
+    GB_HANDLER(GB_UART_PROTOCOL_SEND_DATA, gb_uart_send_data),
+    GB_HANDLER(GB_UART_PROTOCOL_RECEIVE_DATA, gb_uart_receive_data),
+    GB_HANDLER(GB_UART_PROTOCOL_SET_LINE_CODING, gb_uart_set_line_coding),
+    GB_HANDLER(GB_UART_PROTOCOL_SET_CONTROL_LINE_STATE,
                gb_uart_set_control_line_state),
-    GB_HANDLER(GB_UART_TYPE_SEND_BREAK, gb_uart_send_break),
-    GB_HANDLER(GB_UART_TYPE_SERIAL_STATE, gb_uart_serial_state),
+    GB_HANDLER(GB_UART_PROTOCOL_SEND_BREAK, gb_uart_send_break),
+    GB_HANDLER(GB_UART_PROTOCOL_SERIAL_STATE, gb_uart_serial_state),
 };
 
 

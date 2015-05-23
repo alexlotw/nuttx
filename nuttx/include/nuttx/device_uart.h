@@ -108,6 +108,22 @@
 #define MSR_RI          (1<<6)      /* Ring Indicator */
 #define MSR_DCD         (1<<7)      /* Data Carrier Detect */
 
+/**
+ * struct device_uart_type_ops - UART device driver operations
+ *
+ * @param set_configuration: UART set_configuration() function pointer
+ * @param get_modem_ctrl: SPI get_modem_ctrl() function pointer
+ * @param set_modem_ctrl: UART set_modem_ctrl() function pointer
+ * @param get_modem_status: SPI get_modem_status() function pointer
+ * @param get_line_status: UART get_line_status() function pointer
+ * @param set_break: SPI set_break() function pointer
+ * @param attach_ms_callback: UART attach_ms_callback() function pointer
+ * @param attach_ls_callback: SPI attach_ls_callback() function pointer
+ * @param start_transmitter: UART start_transmitter() function pointer
+ * @param stop_transmitter: SPI stop_transmitter() function pointer
+ * @param start_receiver: UART start_receiver() function pointer
+ * @param stop_receiver: SPI stop_receiver() function pointer
+ */
 struct device_uart_type_ops {
     int (*set_configuration)(struct device *dev, int baud, int parity,
                              int databits, int stopbit, int flow);
@@ -130,6 +146,10 @@ struct device_uart_type_ops {
     int (*stop_receiver)(struct device *dev);
 };
 
+
+/**
+ * @brief UART set_configuration function
+ */
 static inline int device_uart_set_configuration(struct device *dev,
                                                 int baud, int parity,
                                                 int databits, int stopbit,
@@ -146,6 +166,10 @@ static inline int device_uart_set_configuration(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART get_modem_ctrl function
+ */
 static inline int device_uart_get_modem_ctrl(struct device *dev,
                                              uint8_t *modem_ctrl)
 {
@@ -159,6 +183,10 @@ static inline int device_uart_get_modem_ctrl(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART set_modem_ctrl function
+ */
 static inline int device_uart_set_modem_ctrl(struct device *dev,
                                              uint8_t *modem_ctrl)
 {
@@ -172,6 +200,10 @@ static inline int device_uart_set_modem_ctrl(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART get_modem_status function
+ */
 static inline int device_uart_get_modem_status(struct device *dev,
                                                uint8_t *modem_status)
 {
@@ -185,6 +217,10 @@ static inline int device_uart_get_modem_status(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART get_line_status function
+ */
 static inline int device_uart_get_line_status(struct device *dev,
                                               uint8_t *line_status)
 {
@@ -197,6 +233,10 @@ static inline int device_uart_get_line_status(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART set_break function
+ */
 static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
 {
     if (dev->state != DEVICE_STATE_OPEN)
@@ -208,6 +248,10 @@ static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART attach_ms_callback function
+ */
 static inline int device_uart_attach_ms_callback(struct device *dev,
                                                  void (*callback)(uint8_t ms))
 {
@@ -221,6 +265,10 @@ static inline int device_uart_attach_ms_callback(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART attach_ls_callback function
+ */
 static inline int device_uart_attach_ls_callback(struct device *dev,
                                                  void (*callback)(uint8_t ls))
 {
@@ -234,6 +282,10 @@ static inline int device_uart_attach_ls_callback(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART start_transmitter function
+ */
 static inline int device_uart_start_transmitter(struct device *dev,
                         uint8_t *buffer, int length, int timeout, int dma,
                         int *sent, void (*callback)(uint8_t *buffer, int length,
@@ -250,6 +302,10 @@ static inline int device_uart_start_transmitter(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART stop_transmitter function
+ */
 static inline int device_uart_stop_transmitter(struct device *dev)
 {
     if (dev->state != DEVICE_STATE_OPEN)
@@ -261,6 +317,10 @@ static inline int device_uart_stop_transmitter(struct device *dev)
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART start_receiver function
+ */
 static inline int device_uart_start_receiver(struct device *dev,
                         uint8_t* buffer, int length, int timeout, int dma,
                         int *got, void (*callback)(uint8_t *buffer, int length,
@@ -277,6 +337,10 @@ static inline int device_uart_start_receiver(struct device *dev,
     return -EOPNOTSUPP;
 }
 
+
+/**
+ * @brief UART stop_receiver function
+ */
 static inline int device_uart_stop_receiver(struct device *dev)
 {
     if (dev->state != DEVICE_STATE_OPEN)

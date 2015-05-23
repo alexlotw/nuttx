@@ -30,7 +30,11 @@
 
 #include <nuttx/device.h>
 
+struct device_driver tsb_uart_driver;
+
 void tsb_driver_register(void)
 {
+#ifdef CONFIG_ARCH_CHIP_DEVICE_UART
     device_register_driver(&tsb_uart_driver);
+#endif /* CONFIG_ARCH_CHIP_DEVICE_UART */
 }
