@@ -54,12 +54,19 @@
 #include <debug.h>
 #include <stdlib.h>
 #include <queue.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <nuttx/device.h>
 #include <nuttx/device_uart.h>
 #include <nuttx/util.h>
+#include <nuttx/config.h>
+#include <nuttx/list.h>
 #include <nuttx/greybus/types.h>
 #include <nuttx/greybus/greybus.h>
+#include <arch/tsb/unipro.h>
+#include <arch/atomic.h>
+#include <apps/greybus-utils/utils.h>
 
 #include "uart-gb.h"
 
@@ -97,9 +104,9 @@
 struct op_node {
     sq_entry_t          entry;
     struct gb_operation *operation;
-    uint16_t            *size;
+    uint16_t            *data_size;
     uint8_t             *buffer;
-    int                 op_buf_size;
+    int                 buf_size;
 };
 
 /**
@@ -110,17 +117,17 @@ struct op_node {
  * @param updated_ls: updated line status from uart through callback
  * @param last_serial_state: the last status sent to the peer.
  * @param ms_ls_operation: reserved operation for status report.
- * @param ms_ls_request: request in reserved operation.
  * @param status_sem: status change semaphore
  * @param status_thread: status change thread handle
  * @param small_op_queue: available small operation queue
  * @param large_op_queue: available large operation queue
  * @param received_op_queue: received data operation queue
- * @param working_op_node: op_node working in uart driver
+ * @param rx_node: op_node in receiving
  * @param need_free_node: flag for requesting a free operation in callback
  * @param last_op_size: keeps the last operation size
  * @param rx_sem: semaphore for notifying data received
  * @param rx_thread: receiving data process threed
+ * @param baudrate: saving the baudrate setting for timeout computing
  * @param dev: uart driver handle
  */
 struct gb_uart_info {
@@ -130,24 +137,42 @@ struct gb_uart_info {
     uint8_t             updated_ls;
     uint16_t            last_serial_state;
     struct gb_operation *ms_ls_operation;
-    struct gb_uart_serial_state_request *ms_ls_request;
     sem_t               status_sem;
     pthread_t           status_thread;
 
     sq_queue_t          small_op_queue;
     sq_queue_t          large_op_queue;
     sq_queue_t          received_op_queue;
-    struct op_node      *working_op_node;
-    int                 need_free_node;
+    struct op_node      *rx_node;
+    int                 require_node;
     int                 last_op_size;
     sem_t               rx_sem;
     pthread_t           rx_thread;
+
+    int                 baudrate;
 
     struct device   *dev;
 };
 
 /* the structure for keeping protocol global data */
-static struct gb_uart_info *info;
+static struct gb_uart_info *info = NULL;
+
+
+/**
+* @brief Compute a timeout value for data transfer
+*
+* According to the bautrate, the byte/msec is
+* baudrate/ 1000 / 8 for speeding up the compute, use the 1024 instead of 1000.
+*
+* @param length the buffer length
+* @return a timeout value.
+*/
+static int compute_timeout(uint8_t length)
+{
+    int byte_per_msec = info->baudrate >> 13; /* 1024 x 8 */
+
+    return 2 * length / byte_per_msec ; /* 2 for buffering */
+}
 
 
 /**
@@ -185,23 +210,24 @@ static void uart_ls_callback(uint8_t ls)
 
 
 /**
-* @brief Get a free entry from two queues.
+* @brief Get a node from received queue
 *
-* This function return a available entry from one of the two queues. If first
-* has free entry, it dequeue the entry and return. If first queue is empty, it
-* looks for second. If both doesn't have free entry. it return NULL.
+* This function return a node from the received queue. It will dequeue the node
+* if there is a node for using.
 *
-* @param first the first queue for looking.
-* @param second the second queue for looking.
-* @return an available entry
-* @retval NULL for no entry available.
+* @param queue the received queue to ask.
+* @return a node pointer or NULL for no node to return.
+* @retval NULL for no node.
 */
-static sq_entry_t *get_free_entry(sq_queue_t *first, sq_queue_t *second)
-{
-    return sq_empty(first) ? sq_empty(second) ?  NULL : sq_remfirst(second) :
-                             sq_remfirst(first);
-}
 
+static struct op_node *get_node_from(sq_queue_t *queue)
+{
+    if (sq_empty(queue)) {
+        return NULL;
+    } else {
+        return (struct op_node *)sq_remfirst(queue);
+    }
+}
 
 /**
 * @brief Free entry to two queues.
@@ -213,7 +239,7 @@ static sq_entry_t *get_free_entry(sq_queue_t *first, sq_queue_t *second)
 */
 static void recycle_op_node(struct op_node *node)
 {
-    sq_queue_t *queue = (node->op_buf_size == OP_BUF_SIZE_SMALL) ?
+    sq_queue_t *queue = (node->buf_size == OP_BUF_SIZE_SMALL) ?
                             &info->small_op_queue : &info->large_op_queue;
 
     sq_addlast(&node->entry, queue);
@@ -235,9 +261,9 @@ static void recycle_op_node(struct op_node *node)
 */
 void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
-    sq_entry_t *entry = NULL;
     struct op_node *node = NULL;
     int ret = SUCCESS;
+    int timeout = 0;
 
     if (error == -EIO) {
         /*
@@ -247,40 +273,46 @@ void uart_rx_callback(uint8_t *buffer, int length, int error)
          */
     }
 
-    *info->working_op_node->size = length;
-    sq_addlast(&info->working_op_node->entry, &info->received_op_queue);
+    *info->rx_node->data_size = length;
+    sq_addlast(&info->rx_node->entry, &info->received_op_queue);
 
     /*
      * Request a free operation due to the last data length
      */
     if (length < OP_BUF_SIZE_SMALL) {
-        entry = get_free_entry(&info->small_op_queue, &info->large_op_queue);
+        node = get_node_from(&info->small_op_queue);
+        if (node == NULL) {
+            node = get_node_from(&info->large_op_queue);
+        }
     } else {
-        entry = get_free_entry(&info->large_op_queue, &info->small_op_queue);
+        node = get_node_from(&info->large_op_queue);
+        if (node == NULL) {
+            node = get_node_from(&info->small_op_queue);
+        }
     }
 
-    if (entry != NULL) {
-        node = (struct op_node *) entry;
+    if (node != NULL) {
+        timeout = compute_timeout(node->buf_size);
         ret = device_uart_start_receiver(info->dev, node->buffer,
-                                         node->op_buf_size,
-                                         10, DMA_OFF, NULL, uart_rx_callback);
+                                         node->buf_size, timeout, DMA_OFF,
+                                         NULL, uart_rx_callback);
         if (ret == SUCCESS) {
-            info->working_op_node = node;
+            info->rx_node = node;
         }
         else {
             recycle_op_node(node);
-            entry = NULL;
+            node = NULL;
         }
     }
 
-    if (entry == NULL) {
+    if (node == NULL) {
         /*
          * if there is no free operation, the rx thread will engage another
          * uart receiver.
          */
-        info->need_free_node = 1;
+        info->require_node = 1;
         info->last_op_size = (length > OP_BUF_SIZE_SMALL) ? OP_BUF_SIZE_LARGE :
-                                                            OP_BUF_SIZE_SMALL;   
+                                                            OP_BUF_SIZE_SMALL;
     }
 
     sem_post(&info->rx_sem);
@@ -329,9 +361,9 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 /**
 * @brief Modem and line status process thread
 *
-* This function is the thread for processing modem and line status
-* change. It uses the operation to send the event to the peer. It only sends the
-* required status for protocol, not the all status in UART.
+* This function is the thread for processing modem and line status change. It
+* uses the operation to send the event to the peer. It only sends the required
+* status for protocol, not the all status in UART.
 *
 * @param data the regular thread data.
 * @return None.
@@ -339,6 +371,7 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 static void *uart_status_thread(void *data)
 {
     uint16_t updated_status = 0;
+    struct gb_uart_serial_state_request *request;
     int ret = SUCCESS;
 
     while (1) {
@@ -347,19 +380,20 @@ static void *uart_status_thread(void *data)
         updated_status = parse_ms_ls_registers(info->updated_ms,
                                                info->updated_ls);
         /*
-         * Only send the status bits protocol cares and have changed to peer
+         * Only send the status bits which protocol need to know to peer
          */
         if (info->last_serial_state ^ updated_status) {
             info->last_serial_state = updated_status;
-
-            info->ms_ls_request->control = 0; /* TODO: no info in spec */
-            info->ms_ls_request->data = updated_status;
+            request = (struct gb_uart_serial_state_request *)
+                        gb_operation_get_request_payload(info->ms_ls_operation);
+            request->control = 0; /* TODO: no info in spec */
+            request->data = updated_status;
             ret = gb_operation_send_request(info->ms_ls_operation, NULL, false);
             if (ret != SUCCESS) {
                 /*
                  *  TODO: heandle this error
                  */
-                lldbg("-status_thread: Can't report event : %d\n", ret);
+                gb_info("%s(): operation send error \n", __func__);
             }
         }
     }
@@ -383,84 +417,80 @@ static void *uart_status_thread(void *data)
 static void *uart_rx_thread(void *data)
 {
     struct op_node *node = NULL, *small_node = NULL;
-    sq_entry_t *entry = NULL, *small_entry = NULL;
     int ret = SUCCESS;
+    int timeout = 0;
     irqstate_t flags = 0;
+
 
     while (1) {
         sem_wait(&info->rx_sem);
 
-        if (!sq_empty(&info->received_op_queue)) {
-            entry = sq_remfirst(&info->received_op_queue);
-            node = (struct op_node *) entry;
+        node = get_node_from(&info->received_op_queue);
+        if (node != NULL) {
             /*
              * if the operation is large size but the data length is small,
              * change the operation for saving transfer time
              */
-            if ((node->op_buf_size == OP_BUF_SIZE_LARGE) &&
-                (*node->size <= OP_BUF_SIZE_SMALL) &&
+            if ((node->buf_size == OP_BUF_SIZE_LARGE) &&
+                (*node->data_size <= OP_BUF_SIZE_SMALL) &&
                 (!sq_empty(&info->small_op_queue))) {
                 /* prevent callback request op at same time */
                 flags = irqsave();
-                small_entry = sq_remfirst(&info->small_op_queue);
+                small_node = get_node_from(&info->small_op_queue);
                 irqrestore(flags);
 
-                small_node = (struct op_node *) small_entry;
-                memcpy(small_node->buffer, node->buffer, node->size);
-                *small_node->size = *node->size;
+                memcpy(small_node->buffer, node->buffer, *node->data_size);
+                *small_node->data_size = *node->data_size;
                 recycle_op_node(node);
-
-                ret = gb_operation_send_request(small_node->operation, NULL,
-                                                false);
-                if (ret != SUCCESS) {
-                    /*
-                     * TODO: need to handle this error
-                     */
-                    lldbg("-rx_thread: Can't send request : %d\n", ret);
-                }
-                recycle_op_node(small_node);
-            } else {
-                ret = gb_operation_send_request(node->operation, NULL, false);
-                if (ret != SUCCESS) {
-                    /*
-                     * TODO: need to handle this error
-                     */
-                    lldbg("-rx_thread: Can't send request : %d\n", ret);
-                }
-                recycle_op_node(node);
+                node = small_node;
             }
+            ret = gb_operation_send_request(node->operation, NULL,
+                                            false);
+            if (ret != SUCCESS) {
+                /*
+                 * TODO: need to handle this error
+                 */
+                gb_info("%s(): operation send error \n", __func__);
+            }
+            recycle_op_node(node);
         }
 
         /*
          * In case the callback can't get free node
          */
-        if (info->need_free_node == 1) {
+        if (info->require_node == 1) {
             if (info->last_op_size == OP_BUF_SIZE_LARGE) {
-                entry = get_free_entry(&info->large_op_queue,
-                                       &info->small_op_queue);
+                node = get_node_from(&info->large_op_queue);
+                if (node == NULL) {
+                    node = get_node_from(&info->small_op_queue);
+                }
             }
             else {
-                entry = get_free_entry(&info->small_op_queue,
-                                       &info->large_op_queue);
+                node = get_node_from(&info->small_op_queue);
+                if (node == NULL) {
+                    node = get_node_from(&info->large_op_queue);
+                }
             }
-            if (entry != NULL) {
-                node = (struct op_node *) entry;
+
+            if (node != NULL) {
+                timeout = compute_timeout(node->buf_size);
                 ret = device_uart_start_receiver(info->dev, node->buffer,
-                                                 node->op_buf_size, 10, 0, NULL,
+                                                 node->buf_size, timeout,
+                                                 DMA_OFF, NULL,
                                                  uart_rx_callback);
-                info->need_free_node = 0;
+                info->require_node = 0;
                 if (ret) {
                     /*
                      * TODO: need to hanlde this error
                      */
-                    lldbg("-rx_thread: driver error in receiving : %d\n", ret);
+                    gb_info("%s(): driver error in receiving \n", __func__);
                 }
             }
             else {
                 /*
                  * TODO: need to handle this error
                  */
-                lldbg("-rx_thread: No entry to continue : %d\n", ret);
+                gb_info("%s(): driver error in receiving \n", __func__);
             }
         }
     }
@@ -506,14 +536,11 @@ static int uart_status_cb_init(void)
     int ret = SUCCESS;
 
     info->ms_ls_operation = gb_operation_create(info->cport,
-                                    GB_UART_TYPE_SERIAL_STATE,
-                                    sizeof(*info->ms_ls_request));
+                                GB_UART_TYPE_SERIAL_STATE,
+                                sizeof(struct gb_uart_serial_state_request));
     if (!info->ms_ls_operation) {
         return -ENOMEM;
     }
-
-    info->ms_ls_request = (struct gb_uart_serial_state_request *)
-                    gb_operation_get_request_payload(info->ms_ls_operation);
 
     ret = sem_init(&info->status_sem, 0, 0);
     if (ret != SUCCESS) {
@@ -540,29 +567,25 @@ static int uart_status_cb_init(void)
 static void uart_receiver_cb_deinit(void)
 {
     struct op_node *node = NULL;
-    sq_entry_t *entry = NULL;
 
-    if (info->rx_thread != NULL) {
+    if (info->rx_thread != 0) {
         pthread_kill(info->rx_thread, SIGKILL);
     }
 
     while (!sq_empty(&info->small_op_queue)) {
-        entry = sq_remfirst(&info->small_op_queue);
-        node = (struct op_node *) entry;
+        node = get_node_from(&info->small_op_queue);
         gb_operation_destroy(node->operation);
         free(node);
     }
 
     while (!sq_empty(&info->large_op_queue)) {
-        entry = sq_remfirst(&info->large_op_queue);
-        node = (struct op_node *) entry;
+        node = get_node_from(&info->large_op_queue);
         gb_operation_destroy(node->operation);
         free(node);
     }
 
     while (!sq_empty(&info->received_op_queue)) {
-        entry = sq_remfirst(&info->received_op_queue);
-        node = (struct op_node *) entry;
+        node = get_node_from(&info->received_op_queue);
         gb_operation_destroy(node->operation);
         free(node);
     }
@@ -592,16 +615,16 @@ static int create_operations(int op_size, sq_queue_t *queue, int num)
     for (i = 0; i < num; i++) {
         operation = gb_operation_create(info->cport,
                                         GB_UART_TYPE_RECEIVE_DATA,
-                                        2 + op_size);
+                                        sizeof(uint16_t) + op_size);
         if (operation) {
             node = (struct op_node *)malloc(sizeof(struct op_node));
             node->operation = operation;
 
             request = (struct gb_uart_receive_data_request *)
                                 gb_operation_get_request_payload(operation);
-            node->size = &request->size;
+            node->data_size = &request->size;
             node->buffer = request->data;
-            node->op_buf_size = op_size;
+            node->buf_size = op_size;
             sq_addlast(&node->entry, queue);
         }
         else {
@@ -756,6 +779,7 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
                   gb_operation_get_request_payload(operation);
 
     baud = request->rate;
+    info->baudrate = baud;
 
     switch (request->format) {
     case GB_SERIAL_1_STOP_BITS:
@@ -768,11 +792,8 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
         stopbit = TWO_STOP_BITS;
         break;
     default:
-        ret = GB_OP_INVALID;
-        /*
-         * The spec doesn't describe how to response the invalid value
-         * need to clarify
-         */
+        return GB_OP_INVALID;
+        break;
     }
 
     switch (request->parity) {
@@ -792,12 +813,12 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
         parity = SPACE_PARITY;
         break;
     default:
-        ret = GB_OP_INVALID;
-        /*
-         * The spec doesn't describe how to response the invalid value
-         * need to clarify
-         */
-        break; 
+        return GB_OP_INVALID;
+        break;
+    }
+
+    if (request->data > 8 || request->data < 5) {
+        return GB_OP_INVALID;
     }
 
     databits = request->data;
@@ -826,7 +847,7 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 */
 static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 {
-    int ret SUCCESS;
+    int ret = SUCCESS;
     uint8_t modem_ctrl = 0;
     struct gb_uart_set_control_line_state_request *request = NULL;
 
@@ -930,7 +951,7 @@ static int gb_uart_init(unsigned int cport)
         return GB_OP_NO_MEMORY;
     }
 
-    lldbg("GB uart info struct: 0x%08p\n", info);
+    gb_info("%s(): GB uart info struct: 0x%08p \n", __func__, info);
 
     info->cport = cport;
 
@@ -973,7 +994,7 @@ static int gb_uart_init(unsigned int cport)
     }
 
     /* trigger the first receiving */
-    info->need_free_node = 1;
+    info->require_node = 1;
     info->last_op_size = OP_BUF_SIZE_LARGE;
     sem_post(&info->rx_sem);
 
@@ -995,7 +1016,7 @@ init_err:
 * @return return error code.
 * @retval GB_OP_SUCCESS sussess to get capabilities.
 */
-static int gb_uart_exit(unsigned int cport)
+static void gb_uart_exit(unsigned int cport)
 {
     device_uart_attach_ms_callback(info->dev, NULL);
 
@@ -1006,8 +1027,6 @@ static int gb_uart_exit(unsigned int cport)
     uart_receiver_cb_deinit();
 
     device_close(info->dev);
-
-    return GB_OP_SUCCESS;
 }
 
 
@@ -1041,6 +1060,6 @@ struct gb_driver uart_driver = {
 */
 void gb_uart_register(int cport)
 {
-    lldbg("gb_uart_register: cport %d\n", cport);
+    gb_info("%s(): cport %d \n", __func__, cport);
     gb_register_driver(cport, &uart_driver);
 }
