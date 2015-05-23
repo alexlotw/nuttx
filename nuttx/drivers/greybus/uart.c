@@ -128,6 +128,7 @@ struct op_node {
  * @param rx_sem: semaphore for notifying data received
  * @param rx_thread: receiving data process threed
  * @param baudrate: saving the baudrate setting for timeout computing
+ * @param thread_stop: terminate the thread 
  * @param dev: uart driver handle
  */
 struct gb_uart_info {
@@ -150,6 +151,7 @@ struct gb_uart_info {
     pthread_t           rx_thread;
 
     int                 baudrate;
+    int                 thread_stop;
 
     struct device   *dev;
 };
@@ -371,6 +373,10 @@ static void *uart_status_thread(void *data)
     while (1) {
         sem_wait(&info->status_sem);
 
+        if (info->thread_stop) {
+            break;
+        }
+
         updated_status = parse_ms_ls_registers(info->updated_ms,
                                                info->updated_ls);
         /*
@@ -392,6 +398,7 @@ static void *uart_status_thread(void *data)
             }
         }
     }
+
     return NULL;
 }
 
@@ -419,6 +426,10 @@ static void *uart_rx_thread(void *data)
 
     while (1) {
         sem_wait(&info->rx_sem);
+
+        if (info->thread_stop) {
+            break;
+        }
 
         node = get_node_from(&info->received_op_queue);
         if (node != NULL) {
@@ -507,6 +518,11 @@ static void *uart_rx_thread(void *data)
 */
 static void uart_status_cb_deinit(void)
 {
+    pthread_addr_t *value;
+
+    sem_post(&info->status_sem);
+    pthread_join(info->status_thread, &value);
+    
     sem_destroy(&info->status_sem);
     
     if (info->status_thread) {
@@ -567,12 +583,12 @@ static int uart_status_cb_init(void)
 static void uart_receiver_cb_deinit(void)
 {
     struct op_node *node = NULL;
+    pthread_addr_t *value;
+
+    sem_post(&info->rx_sem);
+    pthread_join(info->rx_thread, &value);
 
     sem_destroy(&info->rx_sem);
-
-    if (info->rx_thread != 0) {
-        pthread_kill(info->rx_thread, SIGKILL);
-    }
 
     while (!sq_empty(&info->small_op_queue)) {
         node = get_node_from(&info->small_op_queue);
