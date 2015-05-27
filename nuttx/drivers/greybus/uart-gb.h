@@ -56,15 +56,15 @@
 #include <nuttx/greybus/types.h>
 
 /* UART protocol IDs */
-#define GB_UART_TYPE_INVALID                0x00
-#define GB_UART_TYPE_PROTOCOL_VERSION       0x01
-#define GB_UART_TYPE_SEND_DATA              0x02
-#define GB_UART_TYPE_RECEIVE_DATA           0x03
-#define GB_UART_TYPE_SET_LINE_CODING        0x04
-#define GB_UART_TYPE_SET_CONTROL_LINE_STATE 0x05
-#define GB_UART_TYPE_SEND_BREAK             0x06
-#define GB_UART_TYPE_SERIAL_STATE           0x07
-#define GB_UART_TYPE_RESPONSE               0x80    /* OR'd with rest */
+#define GB_UART_PROTOCOL_INVALID                0x00
+#define GB_UART_PROTOCOL_VERSION                0x01
+#define GB_UART_PROTOCOL_SEND_DATA              0x02
+#define GB_UART_PROTOCOL_RECEIVE_DATA           0x03
+#define GB_UART_PROTOCOL_SET_LINE_CODING        0x04
+#define GB_UART_PROTOCOL_SET_CONTROL_LINE_STATE 0x05
+#define GB_UART_PROTOCOL_SEND_BREAK             0x06
+#define GB_UART_PROTOCOL_SERIAL_STATE           0x07
+#define GB_UART_PROTOCOL_RESPONSE               0x80    /* OR'd with rest */
 
 /* stop bits */
 #define GB_SERIAL_1_STOP_BITS       0

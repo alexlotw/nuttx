@@ -25,7 +25,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * @author Alex Lo
+ * @author Mark Greer
  */
 
 #include <nuttx/device.h>
@@ -34,7 +34,6 @@ struct device_driver tsb_uart_driver;
 
 void tsb_driver_register(void)
 {
-	//lldbg("tsb_driver_register device_register_driver   \n"); /* XXX */
 #ifdef CONFIG_ARCH_CHIP_DEVICE_UART
     device_register_driver(&tsb_uart_driver);
 #endif /* CONFIG_ARCH_CHIP_DEVICE_UART */

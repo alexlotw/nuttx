@@ -55,7 +55,6 @@ struct gb_cport_driver {
     pthread_t thread;
 };
 
-
 static atomic_t request_id;
 static struct gb_cport_driver g_cport[CPORT_MAX];
 static struct gb_transport_backend *transport_backend;
@@ -209,7 +208,6 @@ int greybus_rx_handler(unsigned int cport, void *data, size_t size)
     struct gb_operation_handler *op_handler;
     int retval;
 
-	lldbg("cport:%d size:%d\n",cport,size);
     if (cport >= CPORT_MAX || !data)
         return -EINVAL;
 
