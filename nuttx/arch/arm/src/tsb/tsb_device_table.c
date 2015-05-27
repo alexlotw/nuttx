@@ -93,7 +93,7 @@ static struct device tsb_device_table[] = {
         .resource_count = ARRAY_SIZE(tsb_uart_resources),
       //  .init_data      = &tsb_uart_data,
     },
-#endif    
+#endif
 };
 
 int tsb_device_table_register(void)

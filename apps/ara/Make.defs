@@ -126,3 +126,7 @@ endif
 ifeq ($(CONFIG_ARA_BRIDGE_PINSHARE),y)
 CONFIGURED_APPS += ara/pinshare
 endif
+
+ifeq ($(CONFIG_ARA_UART),y)
+CONFIGURED_APPS += ara/uart_test
+endif
