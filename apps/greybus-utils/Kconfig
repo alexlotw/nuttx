@@ -20,8 +20,6 @@ config MANIFEST_LOOPBACK
   bool "Loopback"
 config CUSTOM_MANIFEST
   bool "Custom manifest"
-config MANIFEST_BATTERY_GPIO_I2C_UART
-  bool "Battery, GPIO,I2C and UART"
 config MANIFEST_GPIO_I2C_UART
   bool "GPIO,I2C and UART"
 endchoice
