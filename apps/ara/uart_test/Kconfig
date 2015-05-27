@@ -1,0 +1,23 @@
+#
+# For a description of the syntax of this configuration file,
+# see misc/tools/kconfig-language.txt.
+#
+
+config ARA_UART
+	bool "Ara UART app"
+	default y
+	depends on ARCH_CHIP_TSB || ARCH_BOARD_ARA_SVC
+	---help---
+		Enable the Ara UART test program
+
+if ARA_UART
+
+config ARA_UART_PROGNAME
+	string "Program name"
+	default "uart_test"
+	depends on BUILD_KERNEL
+	---help---
+		This is the name of the program that will be use when the NSH ELF
+		program is installed.
+
+endif
