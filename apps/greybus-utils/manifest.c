@@ -49,6 +49,9 @@ extern void gb_i2c_register(int cport);
 extern void gb_battery_register(int cport);
 extern void gb_loopback_register(int cport);
 extern void gb_vibrator_register(int cport);
+#ifdef CONFIG_GREYBUS_UART_PHY
+extern void gb_uart_register(int cport);
+#endif
 
 struct greybus {
     /* TODO use a list instead */
@@ -128,6 +131,12 @@ void enable_cports(void)
             if (protocol == GREYBUS_PROTOCOL_VIBRATOR) {
                 gb_info("Registering VIBRATOR greybus driver.\n");
                 gb_vibrator_register(id);
+            }
+#endif
+#ifdef CONFIG_GREYBUS_UART_PHY
+            if (protocol == GREYBUS_PROTOCOL_UART) {
+                gb_info("Registering Uart greybus driver. id= %d\n",id);
+                gb_uart_register(id);
             }
 #endif
         }

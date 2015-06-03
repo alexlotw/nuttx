@@ -112,6 +112,10 @@ ifeq ($(CONFIG_MANIFEST_GPIO_I2C_VIBRATOR), y)
  MANIFEST = simple-gpio-i2c-vibrator-module
 endif
 
+ifeq ($(CONFIG_MANIFEST_GPIO_I2C_UART), y)
+ MANIFEST = simple-gpio-i2c-uart-module
+endif
+
 ifeq ($(CONFIG_CUSTOM_MANIFEST), y)
  MANIFEST = $(subst ",,$(CONFIG_MANIFEST))
 endif

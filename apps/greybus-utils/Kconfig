@@ -24,6 +24,8 @@ config MANIFEST_GPIO_I2C_VIBRATOR
   bool "GPIO, I2C, and Vibrator"
 config CUSTOM_MANIFEST
   bool "Custom manifest"
+config MANIFEST_GPIO_I2C_UART
+  bool "GPIO,I2C and UART"
 endchoice
 
 config MANIFEST
