@@ -34,6 +34,10 @@
 #include <nuttx/device_table.h>
 #include <nuttx/device_pll.h>
 
+#include <nuttx/device_uart.h>
+#include <arch/tsb/irq.h>
+#include "tsb_uart.h"
+
 #include "chip.h"
 
 #ifdef CONFIG_ARCH_CHIP_DEVICE_PLL
@@ -50,6 +54,23 @@ static struct device_resource tsb_plla_resources[] = {
 };
 #endif
 
+#ifdef CONFIG_ARCH_CHIP_DEVICE_UART
+static struct device_resource tsb_uart_resources[] = {
+    {
+        .name   = "reg_base",
+        .type   = DEVICE_RESOURCE_TYPE_REGS,
+        .start  = UART_SIZE,
+        .count  = SYSCTL_SIZE,
+    },
+    {
+        .name   = "irq_uart",
+        .type   = DEVICE_RESOURCE_TYPE_IRQ,
+        .start  = TSB_IRQ_UART,
+        .count  = 1,
+    },
+};
+#endif
+
 static struct device tsb_device_table[] = {
 #ifdef CONFIG_ARCH_CHIP_DEVICE_PLL
     {
@@ -59,6 +80,17 @@ static struct device tsb_device_table[] = {
         .id             = 0,
         .resources      = tsb_plla_resources,
         .resource_count = ARRAY_SIZE(tsb_plla_resources),
+    },
+#endif
+
+#ifdef CONFIG_ARCH_CHIP_DEVICE_UART
+    {
+        .type           = DEVICE_TYPE_UART_HW,
+        .name           = "tsb_uart",
+        .desc           = "TSB UART Controller",
+        .id             = 0,
+        .resources      = tsb_uart_resources,
+        .resource_count = ARRAY_SIZE(tsb_uart_resources),
     },
 #endif
 };

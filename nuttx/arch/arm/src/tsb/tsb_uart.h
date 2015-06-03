@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2015 Google Inc.
+/*
+ * Copyright (c) 2015 Google, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,19 +24,12 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * @author Mark Greer
  */
 
-#include <nuttx/device.h>
+#ifndef __ARCH_ARM_TSB_TSB_UART_H
+#define __ARCH_ARM_TSB_TSB_UART_H
 
-#ifdef CONFIG_ARCH_CHIP_DEVICE_UART
-extern struct device_driver tsb_uart_driver;
-#endif /* CONFIG_ARCH_CHIP_DEVICE_UART */
 
-void tsb_driver_register(void)
-{
-#ifdef CONFIG_ARCH_CHIP_DEVICE_UART
-    device_register_driver(&tsb_uart_driver);
-#endif /* CONFIG_ARCH_CHIP_DEVICE_UART */
-}
+
+#endif /* __ARCH_ARM_TSB_TSB_UART_H */
+
