@@ -326,6 +326,14 @@ static int tsb_uart_extract_resource(struct device *dev,
 static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
                                       int databits, int stopbit, int flow)
 {
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL || modem_ctrl == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
     /* Clear fifo */
     uart_putreg(info->reg_base, UART_FCR_OFFSET, (UART_FCR_RXRST|UART_FCR_TXRST));
 
@@ -395,7 +403,16 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 */
 static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    modem_ctrl = uart_getreg(info->reg_base, UART_MCR_OFFSET);
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL || modem_ctrl == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
+    *modem_ctrl = uart_getreg(info->reg_base, UART_MCR_OFFSET);
+
     return SUCCESS;
 }
 
@@ -413,7 +430,16 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL || modem_ctrl == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
     uart_putreg(info->reg_base, UART_MCR_OFFSET, *modem_ctrl);
+    
     return SUCCESS;
 }
 
@@ -431,7 +457,16 @@ static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 {
-    modem_status = uart_getreg(info->reg_base, UART_MSR_OFFSET);
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL || modem_status == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
+    *modem_status = uart_getreg(info->reg_base, UART_MSR_OFFSET);
+    
     return SUCCESS;
 }
 
@@ -448,7 +483,16 @@ static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 */
 static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 {
-    line_status = uart_getreg(info->reg_base, UART_LSR_OFFSET);
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL || line_status == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
+    *line_status = uart_getreg(info->reg_base, UART_LSR_OFFSET);
+    
     return SUCCESS;
 }
 
@@ -474,6 +518,7 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
     }
 
     info = dev->private;
+    
     lcr = uart_getreg(info->reg_base, UART_LCR_OFFSET);
     if (break_on != 0) {
         lcr |= UART_LCR_BRK;
