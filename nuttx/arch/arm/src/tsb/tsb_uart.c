@@ -34,12 +34,25 @@
 #include <nuttx/wqueue.h>
 #include <nuttx/device.h>
 #include <nuttx/device_uart.h>
+#include <nuttx/serial/uart_16550.h>
 
 #include "up_arch.h"
 #include "tsb_scm.h"
 #include "tsb_uart.h"
 
 #define SUCCESS     0
+
+#define TSB_UART_FLAG_OPEN          BIT(0)
+#define TSB_UART_FLAG_XMIT          BIT(1)
+#define TSB_UART_FLAG_RECV          BIT(2)
+
+struct uart_buffer
+{
+  volatile int16_t head;   /* Index to the head [IN] index in the buffer */
+  volatile int16_t tail;   /* Index to the tail [OUT] index in the buffer */
+  int16_t          size;   /* The allocated size of the buffer */
+  uint8_t          *buffer; /* Pointer to the allocated buffer memory */
+};
 
 /**
  * struct tsb_uart_info - the driver internal variable
@@ -54,11 +67,244 @@
 struct tsb_uart_info {
     struct device   *dev;
     uint32_t        flags;
+
+    uint32_t        reg_base;
+    int             uart_irq;
+
+    uint32_t        baud;
+    uint32_t        uartclk;
+    uint8_t         parity;
+    uint8_t         bits;
+    uint8_t         stopbits2;
+
+    uart_datawidth_t    ier;
+
+    struct uart_buffer xmit;
+    struct uart_buffer recv;
+
     void            (*ms_callback)(uint8_t ms);
     void            (*ls_callback)(uint8_t ls);
     void            (*rx_callback)(uint8_t *buffer, int length, int error);
     void            (*tx_callback)(uint8_t *buffer, int length, int error);
 };
+
+static struct device *saved_dev;
+
+/**
+* @brief uart_divisor()
+*/
+static inline uint32_t uart_divisor(uint32_t baud, uint32_t uartclk)
+{
+  return (uartclk + (baud << 3)) / (baud << 4);
+}
+
+
+/**
+* @brief uart_receive()
+*/
+static int uart_receive(struct tsb_uart_info *info, uint32_t *status)
+{
+    uint32_t rdr;
+
+    *status = uart_getreg(info->reg_base, UART_LSR_OFFSET);
+    rdr = uart_getreg(info->reg_base, UART_RBR_OFFSET);
+
+    return rbr & 0xff;
+}
+
+/**
+* @brief uart_rxint()
+*/
+static void uart_rxint(struct tsb_uart_info *info, uint32_t enable)
+{
+    if (enable) {
+        info->ier |= UART_IER_ERBFI;
+    } else {
+        info->ier &= ~UART_IER_ERBFI;
+    }
+    uart_putreg(info->reg_base, UART_IER_OFFSET, info->ier);
+}
+
+/**
+* @brief uart_rxavailable()
+*/
+static uint32_t uart_rxavailable(struct tsb_uart_info *info)
+{
+    return (uart_getreg(info->reg_base, UART_LSR_OFFSET) & UART_LSR_DR) != 0;
+}
+
+/**
+* @brief uart_send()
+*/
+static void uart_send(struct tsb_uart_info *info, uint32_t ch)
+{
+    uart_putreg(info->reg_base, UART_THR_OFFSET, (uart_datawidth_t)ch);
+}
+
+/**
+* @brief uart_txint()
+*/
+static void uart_txint(struct tsb_uart_info *info, uint32_t enable)
+{
+    irqstate_t flags;
+
+    flags = irqsave();
+    if (enable) {
+        info->ier |= UART_IER_ETBEI;
+        uart_putreg(info->reg_base, UART_IER_OFFSET, info->ier);
+
+        uart_xmitchars(dev);
+    } else {
+      priv->ier &= ~UART_IER_ETBEI;
+      uart_putreg(info->reg_base, UART_IER_OFFSET, priv->ier);
+    }
+
+  irqrestore(flags);
+}
+
+/**
+* @brief uart_txready()
+*/
+static uint32_t uart_txready(struct tsb_uart_info *info)
+{
+    return ((uart_getreg(info->reg_base, UART_LSR_OFFSET) & UART_LSR_THRE) != 0);
+}
+
+/**
+* @brief uart_txready()
+*/
+static uint32_t uart_txempty(struct tsb_uart_info *info)
+{
+    return ((uart_getreg(info->reg_base, UART_LSR_OFFSET) & UART_LSR_THRE) != 0);
+}
+
+/**
+* @brief uart_ms_ls()
+*/
+static void uart_ms_ls(struct tsb_uart_info *info)
+{
+
+}
+
+/**
+* @brief uart_xmitchars()
+*/
+static void uart_xmitchars(struct tsb_uart_info *info)
+{
+    uint16_t nbytes = 0;
+
+    while (info->xmit.head != info->xmit.tail && uart_txready(info)) {
+        uart_send(dev, dev->xmit.buffer[dev->xmit.tail]);
+        nbytes++;
+
+        if (++(dev->xmit.tail) >= dev->xmit.size) {
+          dev->xmit.tail = 0;
+        }
+    }
+
+    if (dev->xmit.head == dev->xmit.tail) {
+        uart_disabletxint(dev);
+    }
+
+    if (nbytes) {
+      uart_datasent(dev);
+    }
+}
+
+/**
+* @brief uart_recv()
+*/
+static void uart_recvchars(struct tsb_uart_info *info)
+{
+    unsigned int status;
+    int nexthead = dev->recv.head + 1;
+    uint16_t nbytes = 0;
+
+    if (nexthead >= dev->recv.size) {
+        nexthead = 0;
+    }
+
+    while (uart_rxavailable(dev))
+    {
+        bool is_full = (nexthead == dev->recv.tail);
+        char ch;
+
+        if (is_full) {
+            if (uart_rxflowcontrol(dev)) {
+              /* Low-level driver activated RX flow control, exit loop now. */
+
+              break;
+            }
+        }
+
+        ch = uart_receive(dev, &status);
+
+        if (!is_full) {
+          /* Add the character to the buffer */
+
+            dev->recv.buffer[dev->recv.head] = ch;
+            nbytes++;
+
+          /* Increment the head index */
+
+            dev->recv.head = nexthead;
+            if (++nexthead >= dev->recv.size) {
+                nexthead = 0;
+            }
+        }
+    }
+
+    if (nbytes) {
+      uart_datareceived(dev);
+    }
+}
+
+
+/**
+* @brief uart_irq_handler()
+*/
+static int uart_irq_handler(int irq, void *context)
+{
+    struct struct tsb_i2s_info *info = saved_dev->private;
+    uint8_t iir;
+
+    iir = uart_getreg(info->reg_base, UART_IIR_OFFSET);
+    /* Modem status*/ /* Line status */
+    if (iir & (UART_IIR_INTID_MSI | UART_IIR_INTID_RLS)) {
+        uart_ms_ls();
+    }
+    /* Thr empty */
+    if (iir & UART_IIR_INTID_THRE ) {
+        uart_xmit();
+    }
+    /* Receive Data Available (RDA) */  /* Character Time-out Indicator (CTI) */
+    if (iir & (UART_IIR_INTID_RDA | UART_IIR_INTID_CTI) ) {
+        uart_recv();
+    }
+}
+
+/**
+* @brief tsb_uart_extract_resource()
+*/
+static int tsb_uart_extract_resource(struct device *dev,
+                                     struct tsb_uart_info * info)
+{
+    struct device_resource *r = NULL;
+
+    r = device_resource_get_by_name(dev, DEVICE_RESOUCE_TYPE_REGS, "reg_base");
+    if (!r)
+        return -EINVAL;
+
+    info->reg_base = r->start;
+
+    r = device_resource_get_by_name(dev, DEVICE_RESOUCE_TYPE_IRQ, "irq_uart");
+    if (!r)
+        return -EINVAL;
+
+    info->uart_irq = (int)r->start;
+
+    return SUCCESS;
+}
 
 
 /**
@@ -80,7 +326,58 @@ struct tsb_uart_info {
 static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
                                       int databits, int stopbit, int flow)
 {
-    /* TODO: to implement the function body */
+    /* Clear fifo */
+    uart_putreg(info->reg_base, UART_FCR_OFFSET, (UART_FCR_RXRST|UART_FCR_TXRST));
+
+    /* Set trigger */
+    uart_putreg(info->reg_base, UART_FCR_OFFSET, (UART_FCR_RXRST|UART_FCR_TXRST));
+
+    /* Set up the LCR */
+    lcr = 0;
+    switch (databits) {
+    case 5:
+        lcr |= UART_LCR_WLS_5BIT;
+        break;
+    case 6:
+        lcr |= UART_LCR_WLS_6BIT;
+        break;
+    case 7 :
+        lcr |= UART_LCR_WLS_7BIT;
+        break;
+    default:
+    case 8 :
+        lcr |= UART_LCR_WLS_8BIT;
+        break;
+    }
+
+    if (stopbit) {
+        lcr |= UART_LCR_STB;
+    }
+
+    if (parity == 1)
+    {
+      lcr |= UART_LCR_PEN;
+    }
+     else if (priv->parity == 2)
+    {
+      lcr |= (UART_LCR_PEN|UART_LCR_EPS);
+    }
+
+    /* Enter DLAB=1 */
+    uart_putreg(info->reg_base, UART_LCR_OFFSET, (lcr | UART_LCR_DLAB));
+
+    /* Set the BAUD divisor */
+    div = uart_divisor(priv);
+    uart_putreg(info->reg_base, UART_DLM_OFFSET, div >> 8);
+    uart_putreg(info->reg_base, UART_DLL_OFFSET, div & 0xff);
+
+    /* Clear DLAB */
+    uart_putreg(info->reg_base, UART_LCR_OFFSET, lcr);
+
+    /* Configure the FIFOs */
+    uart_putreg(info->reg_base, UART_FCR_OFFSET,
+                (UART_FCR_RXTRIGGER_8|UART_FCR_TXRST|UART_FCR_RXRST|UART_FCR_FIFOEN));
+
     return SUCCESS;
 }
 
@@ -98,7 +395,7 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 */
 static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    /* TODO: to implement the function body */
+    modem_ctrl = uart_getreg(info->reg_base, UART_MCR_OFFSET);
     return SUCCESS;
 }
 
@@ -116,7 +413,7 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    /* TODO: to implement the function body */
+    uart_putreg(info->reg_base, UART_MCR_OFFSET, *modem_ctrl);
     return SUCCESS;
 }
 
@@ -134,7 +431,7 @@ static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 {
-    /* TODO: to implement the function body */
+    modem_status = uart_getreg(info->reg_base, UART_MSR_OFFSET);
     return SUCCESS;
 }
 
@@ -151,7 +448,7 @@ static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 */
 static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 {
-    /* TODO: to implement the function body */
+    line_status = uart_getreg(info->reg_base, UART_LSR_OFFSET);
     return SUCCESS;
 }
 
@@ -165,11 +462,26 @@ static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 * @param break_on break state value, it should be 0 or 1.
 * @return
 * @retval SUCCESS Success.
-* @retval EINVAL Invalid parameters.
+* @retval -EINVAL Invalid parameters.
 */
 static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 {
-    /* TODO: to implement the function body */
+    struct tsb_uart_info *info = NULL;
+    uint32_t lcr = 0;
+
+    if (dev == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    lcr = uart_getreg(info->reg_base, UART_LCR_OFFSET);
+    if (break_on != 0) {
+        lcr |= UART_LCR_BRK;
+    } else {
+        lcr &= ~UART_LCR_BRK;
+    }
+    uart_putreg(info->reg_base, UART_LCR_OFFSET, lcr);
+    
     return SUCCESS;
 }
 
@@ -187,7 +499,22 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 static int tsb_uart_attach_ms_callback(struct device *dev,
                                        void (*callback)(uint8_t ms))
 {
-    /* TODO: to implement the function body */
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
+    if (callback == NULL) {
+        info->ier &= ~UART_IER_EDSSI;
+        info->ms_callback = NULL;
+        return SUCCESS;
+    }
+
+    info->ier |= UART_IER_EDSSI;
+    info->ms_callback = callback;
     return SUCCESS;
 }
 
@@ -207,7 +534,22 @@ static int tsb_uart_attach_ms_callback(struct device *dev,
 static int tsb_uart_attach_ls_callback(struct device *dev,
                                        void (*callback)(uint8_t ls))
 {
-    /* TODO: to implement the function body */
+    struct tsb_uart_info *info = NULL;
+
+    if (dev == NULL) {
+        return -EINVAL;
+    }
+
+    info = dev->private;
+    
+    if (callback == NULL) {
+        info->ier &= ~UART_IER_ELSI;
+        info->ms_callback = NULL;
+        return SUCCESS;
+    }
+
+    info->ier |= UART_IER_ELSI;
+    info->ls_callback = callback;
     return SUCCESS;
 }
 
@@ -325,7 +667,12 @@ static int tsb_uart_dev_open(struct device *dev)
 
     flags = irqsave();
 
-    /* TODO: to implement the function body */
+    if (info->flags & TSB_UART_FLAG_OPEN) {
+        ret = -EBUSY;
+        goto err_irqrestore;
+    }
+
+    info->flags = TSB_UART_FLAG_OPEN;
 
 err_irqrestore:
     irqrestore(flags);
@@ -350,14 +697,23 @@ static void tsb_uart_dev_close(struct device *dev)
 
     flags = irqsave();
 
-    /* TODO: to implement the function body */
+    if (!(info->flags & TSB_UART_FLAG_OPEN)) {
+        goto err_irqrestore;
+    }
+
+    if (info->flags & TSB_UART_FLAG_XMIT) {
+        tsb_uart_stop_transmitter(dev);
+    }
+
+    if (info->flags & TSB_UART_FLAG_XMIT) {
+        tsb_uart_stop_receiver(dev);
+    }
 
     info->flags = 0;
 
 err_irqrestore:
     irqrestore(flags);
 }
-
 
 /**
 * @brief The device probe function
@@ -376,7 +732,6 @@ err_irqrestore:
 static int tsb_uart_dev_probe(struct device *dev)
 {
     struct tsb_uart_info *info;
-    struct tsb_uart_init_data *init_data = dev->init_data;
     irqstate_t flags;
     int ret = SUCCESS;
 
@@ -386,16 +741,31 @@ static int tsb_uart_dev_probe(struct device *dev)
 
     lldbg("LL uart info struct: 0x%08p\n", info);
 
+    ret = tsb_uart_extract_resources(dev, info);
+    if (ret)
+        goto err_free_info;
+
     flags = irqsave();
 
-    /* TODO: to implement the function body */
+    ret = irq_attach(info->uart_irq, tsb_uart_irq_handler);
+    if (ret != SUCCESS) {
+        goto err_free_info;
+    }
 
     info->dev = dev;
     dev->private = info;
+    saved_dev = dev;
 
     irqrestore(flags);
 
     return SUCCESS;
+
+err_attach_irq:
+    irq_detach(info->uart_irq);
+err_free_info:
+    free(info);
+
+    return ret;
 }
 
 
@@ -416,8 +786,9 @@ static void tsb_uart_dev_remove(struct device *dev)
 
     flags = irqsave();
 
-    /* TODO: to implement the function body */
+    irq_detach(info->uart_irq);
 
+    saved_dev = NULL;
     dev->private = NULL;
 
     irqrestore(flags);
