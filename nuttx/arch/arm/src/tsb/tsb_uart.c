@@ -52,6 +52,7 @@ struct uart_buffer
   volatile int16_t tail;   /* Index to the tail [OUT] index in the buffer */
   int16_t          size;   /* The allocated size of the buffer */
   uint8_t          *buffer; /* Pointer to the allocated buffer memory */
+  void             (*callback)(uint8_t *buffer, int length, int error);
 };
 
 /**
@@ -76,6 +77,7 @@ struct tsb_uart_info {
     uint8_t         parity;
     uint8_t         bits;
     uint8_t         stopbits2;
+    uint8_t         flow;
 
     uart_datawidth_t    ier;
 
@@ -259,6 +261,42 @@ static void uart_recvchars(struct tsb_uart_info *info)
     }
 }
 
+static int recv_fifo_empty(struct tsb_uart_info *info)
+{
+    
+}
+
+/**
+* @brief uart_recv_handler()
+*/
+static void recv_handler(struct tsb_uart_info *info)
+{
+    char ch;
+    // while data in fifo and having buffer space
+    // move data from fifo to buffer
+    // if buffer full,
+    //    notify caller to proceed.
+    //    flow control
+    // if fifo is empty
+    //    quit
+
+    // check buffer
+    // 
+
+    while(!recv_fifo_empty()) {
+        ch = get_char(info->reg_base, status);
+        info->recv->buffer[info->recv->head++] = ch;
+        if (info->recv->head >= info->recv->tail) {
+            // ready to invoke callback
+
+            // consider the flow control
+            break;
+        }
+    }
+
+    
+}
+
 
 /**
 * @brief uart_irq_handler()
@@ -328,17 +366,17 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 {
     struct tsb_uart_info *info = NULL;
 
-    if (dev == NULL || modem_ctrl == NULL) {
+    if (dev == NULL) {
         return -EINVAL;
     }
 
     info = dev->private;
     
     /* Clear fifo */
-    uart_putreg(info->reg_base, UART_FCR_OFFSET, (UART_FCR_RXRST|UART_FCR_TXRST));
+    uart_putreg(info->reg_base, UART_FCR_OFFSET, UART_FCR_RXRST|UART_FCR_TXRST);
 
     /* Set trigger */
-    uart_putreg(info->reg_base, UART_FCR_OFFSET, (UART_FCR_RXRST|UART_FCR_TXRST));
+    uart_putreg(info->reg_base, UART_FCR_OFFSET, UART_FCR_RXRST|UART_FCR_TXRST);
 
     /* Set up the LCR */
     lcr = 0;
