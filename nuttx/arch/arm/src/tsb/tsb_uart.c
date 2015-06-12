@@ -96,9 +96,9 @@ static void ua_putreg(uint32_t base, uint32_t offset, uint32_t value)
 }
 
 /**
-* @brief ua_reg_bit_set()
+* @brief ua_reg_bit_value()
 */
-static void ua_reg_bit_set(uint32_t reg, uint32_t offset, uint8_t bitmask,
+static void ua_reg_bit_value(uint32_t reg, uint32_t offset, uint8_t bitmask,
                            uint8_t bitvalue)
 {
     uint8_t regvalue = ua_getreg(reg, offset);
@@ -109,6 +109,27 @@ static void ua_reg_bit_set(uint32_t reg, uint32_t offset, uint8_t bitmask,
     }
     ua_putreg(reg, offset, regvalue);
 }
+
+/**
+* @brief ua_reg_bit_set()
+*/
+static void ua_reg_bit_set(uint32_t reg, uint32_t offset, uint8_t bitmask)
+{
+    uint8_t regvalue = ua_getreg(reg, offset);
+    regvalue |= bitmask;
+    ua_putreg(reg, offset, regvalue);
+}
+
+/**
+* @brief ua_reg_bit_clr()
+*/
+static void ua_reg_bit_clr(uint32_t reg, uint32_t offset, uint8_t bitmask)
+{
+    uint8_t regvalue = ua_getreg(reg, offset);
+    regvalue &= ~bitmask;
+    ua_putreg(reg, offset, regvalue);
+}
+
 
 /**
 * @brief ua_set_dlab()
@@ -135,11 +156,19 @@ static void ua_put_char(uint32_t base, uint8_t ch)
 }
 
 /**
-* @brief ua_put_char()
+* @brief ua_enable_interrupt()
 */
 static void ua_enable_interrupt(uint32_t base, uint8_t interrupt)
 {
-    ua_putreg(base, UA_IER_DLH, interrupt);
+    ua_reg_bit_set(base, UA_IER_DLH, UA_IER_ERBFI);
+}
+
+/**
+* @brief ua_disable_interrupt()
+*/
+static void ua_disable_interrupt(uint32_t base, uint8_t interrupt)
+{
+    ua_reg_bit_clr(base, UA_IER_DLH, UA_IER_ERBFI);
 }
 
 /**
@@ -238,38 +267,6 @@ static void ua_set_auto_flow(uint32_t base, uint8_t autoflow)
 }
 
 /**
-* @brief ua_set_rts()
-*/
-static void ua_set_rts(uint32_t base, uint8_t rts)
-{
-    ua_reg_bit_set(base, UA_MCR, UA_RTS, rts);
-}
-
-/**
-* @brief ua_set_cts()
-*/
-static void ua_set_cts(uint32_t base, uint8_t cts)
-{
-    ua_reg_bit_set(base, UA_MCR, UA_CTS, cts);
-}
-
-/**
-* @brief ua_get_line_status()
-*/
-static uint8_t ua_get_line_status(uint32_t base)
-{
-    return ua_getreg(base, UA_LSR) & UA_LSR_MASK;
-}
-
-/**
-* @brief ua_get_modem_status()
-*/
-static uint8_t ua_get_modem_status(uint32_t base)
-{
-    return ua_getreg(base, UA_MSR);
-}
-
-/**
 * @brief ua_is_tx_fifo_full()
 */
 static uint8_t ua_is_tx_fifo_full(uint32_t base)
@@ -291,15 +288,6 @@ static uint8_t ua_is_tx_fifo_empty(uint32_t base)
 static uint8_t ua_is_rx_fifo_empty()
 {
     return (ua_getreg(base + UA_USR) & UA_USR_RFNE) ? 0 : 1;
-}
-
-
-/**
-* @brief uart_ms_ls()
-*/
-static void uart_ms_ls(struct tsb_uart_info *info)
-{
-
 }
 
 /**
@@ -330,8 +318,22 @@ static void uart_xmitchars(struct tsb_uart_info *info)
 /**
 * @brief uart_recv()
 */
-static void uart_recvchars(struct tsb_uart_info *info)
+static void uart_recvchars(struct tsb_uart_info *uart_info, uint8_t timeout)
 {
+    uint8_t ch;
+    
+    while (!ua_is_rx_fifo_empty(uart_info->reg_base)) {
+        ch = ua_get_char(uart_info->reg_base);
+        uart_info->recv.buffer[uart_info->recv.head++] = ch;
+        if (uart_info->recv.head == uart_info->recv.tail) {
+            ua_disable_interrupt(uart_info->reg_base, UA_IER_ERBFI);
+            if (uart_info->rx_callback) {
+                uart_info->rx_callback(uart_info->recv.buffer,
+                                       uart_info->recv.tail, SUCCESS)
+            }
+        }
+    }
+
     unsigned int status;
     int nexthead = dev->recv.head + 1;
     uint16_t nbytes = 0;
@@ -389,10 +391,39 @@ static void recv_handler(struct tsb_uart_info *info)
 */
 static int uart_irq_handler(int irq, void *context)
 {
-    struct struct tsb_i2s_info *info = saved_dev->private;
-    uint8_t iir;
+    struct struct tsb_uart_info *uart_info = saved_dev->private;
+    uint8_t interrupt_id;
+    uint8_t status;
 
-    iir = uart_getreg(info->reg_base, UART_IIR_OFFSET);
+    while (1) {
+        interrupt_id = ua_get_interrupt_id(uart_info->reg_base);
+        if (interrupt_id == UA_INTERRUPT_ID_NO) {
+            /* no interrupt pending */
+            break;
+        }
+        
+        switch (interrupt_id) {
+        case UA_INTERRUPT_ID_MS:
+            status = ua_getreg(uart_info->reg_base, UA_MSR);
+            if (uart_info->ms_callback) {
+                uart_info->ms_callback(status);
+            }
+            break;
+        case UA_INTERRUPT_ID_LS:
+            status = ua_getreg(uart_info->reg_base, UA_LSR);
+            if (uart_info->ls_callback) {
+                uart_info->ls_callback(status);
+            }
+            break;
+        case UA_INTERRUPT_ID_TX:
+            
+            break;
+        case UA_INTERRUPT_ID_RX:
+        case UA_INTERRUPT_ID_TO
+            break;
+        }
+    }
+    
     /* Modem status*/ /* Line status */
     if (iir & (UART_IIR_INTID_MSI | UART_IIR_INTID_RLS)) {
         uart_ms_ls();
@@ -483,9 +514,6 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
     ua_set_data_bits(uart_info->reg_base, lcr);
 
     ua_set_stop_bit(uart_info->reg_base, stopbit);
-
-    ua_set_auto_flow(flow);
-    uart_info->flow = flow;
     
     lcr = 0;
     if (parity == ODD_PARITY) {
@@ -519,7 +547,6 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
     struct tsb_uart_info *uart_info = NULL;
-    uint8_t m_ctrl;
     
     if (dev == NULL || modem_ctrl == NULL) {
         return -EINVAL;
@@ -528,7 +555,6 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
     uart_info = dev->private;
     
     *modem_ctrl = ua_getreg(uart_info->reg_base, UA_MSR);
-    *modem_ctrl &= ~UA_AUTO_FLOW_ENABLE;
 
     return SUCCESS;
 }
@@ -548,7 +574,6 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
     struct tsb_uart_info *uart_info = NULL;
-    uint32_t m_ctrl = 0;
 
     if (dev == NULL || modem_ctrl == NULL) {
         return -EINVAL;
@@ -556,11 +581,7 @@ static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 
     uart_info = dev->private;
 
-    m_ctrl = *modem_ctrl;
-    if (ua_getreg(uart_info->reg_base, UA_MCR) & UA_AUTO_FLOW_ENABLE) {
-        m_ctrl |= UA_AUTO_FLOW_ENABLE;
-    }
-    uart_putreg(uart_info->reg_base, UA_MCR, m_ctrl);
+    ua_putreg(uart_info->reg_base, UA_MCR, *modem_ctrl);
     
     return SUCCESS;
 }
@@ -578,15 +599,15 @@ static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 {
-    struct tsb_uart_info *info = NULL;
+    struct tsb_uart_info *uart_info = NULL;
 
     if (dev == NULL || modem_status == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
+    uart_info = dev->private;
     
-    *modem_status = uart_getreg(info->reg_base, UART_MSR_OFFSET);
+    *modem_status = ua_getreg(uart_info->reg_base, UA_MSR);
     
     return SUCCESS;
 }
@@ -604,15 +625,15 @@ static int tsb_uart_get_modem_status(struct device *dev, uint8_t *modem_status)
 */
 static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 {
-    struct tsb_uart_info *info = NULL;
+    struct tsb_uart_info *uart_info = NULL;
 
     if (dev == NULL || line_status == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
+    uart_info = dev->private;
     
-    *line_status = uart_getreg(info->reg_base, UART_LSR_OFFSET);
+    *line_status = ua_getreg(uart_info->reg_base, UA_LSR);
     
     return SUCCESS;
 }
@@ -631,22 +652,15 @@ static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 */
 static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 {
-    struct tsb_uart_info *info = NULL;
-    uint32_t lcr = 0;
+    struct tsb_uart_info *uart_info = NULL;
 
     if (dev == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
-    
-    lcr = uart_getreg(info->reg_base, UART_LCR_OFFSET);
-    if (break_on != 0) {
-        lcr |= UART_LCR_BRK;
-    } else {
-        lcr &= ~UART_LCR_BRK;
-    }
-    uart_putreg(info->reg_base, UART_LCR_OFFSET, lcr);
+    uart_info = dev->private;
+
+    ua_reg_bit_set(info->reg_base, UA_LCR, UA_LCR_BREAK, break_on);
     
     return SUCCESS;
 }
@@ -913,7 +927,7 @@ static int tsb_uart_dev_probe(struct device *dev)
 
     flags = irqsave();
 
-    ret = irq_attach(info->uart_irq, tsb_uart_irq_handler);
+    ret = irq_attach(info->uart_irq, uart_irq_handler);
     if (ret != SUCCESS) {
         goto err_free_info;
     }
