@@ -42,19 +42,6 @@
 
 #define SUCCESS     0
 
-#define TSB_UART_FLAG_OPEN          BIT(0)
-#define TSB_UART_FLAG_XMIT          BIT(1)
-#define TSB_UART_FLAG_RECV          BIT(2)
-
-struct uart_buffer
-{
-  volatile int16_t head;   /* Index to the head [IN] index in the buffer */
-  volatile int16_t tail;   /* Index to the tail [OUT] index in the buffer */
-  int16_t          size;   /* The allocated size of the buffer */
-  uint8_t          *buffer; /* Pointer to the allocated buffer memory */
-  void             (*callback)(uint8_t *buffer, int length, int error);
-};
-
 /**
  * struct tsb_uart_info - the driver internal variable
  *
@@ -93,92 +80,219 @@ struct tsb_uart_info {
 static struct device *saved_dev;
 
 /**
-* @brief uart_divisor()
+* @brief ua_getreg()
 */
-static inline uint32_t uart_divisor(uint32_t baud, uint32_t uartclk)
+static uint32_t ua_getreg(uint32_t base, uint32_t offset)
 {
-  return (uartclk + (baud << 3)) / (baud << 4);
-}
-
-
-/**
-* @brief uart_receive()
-*/
-static int uart_receive(struct tsb_uart_info *info, uint32_t *status)
-{
-    uint32_t rdr;
-
-    *status = uart_getreg(info->reg_base, UART_LSR_OFFSET);
-    rdr = uart_getreg(info->reg_base, UART_RBR_OFFSET);
-
-    return rbr & 0xff;
+    return getreg32(base + offset);
 }
 
 /**
-* @brief uart_rxint()
+* @brief ua_putreg()
 */
-static void uart_rxint(struct tsb_uart_info *info, uint32_t enable)
+static void ua_putreg(uint32_t base, uint32_t offset, uint32_t value)
 {
-    if (enable) {
-        info->ier |= UART_IER_ERBFI;
+    putreg32(value, base + offset);
+}
+
+/**
+* @brief ua_reg_bit_set()
+*/
+static void ua_reg_bit_set(uint32_t reg, uint32_t offset, uint8_t bitmask,
+                           uint8_t bitvalue)
+{
+    uint8_t regvalue = ua_getreg(reg, offset);
+    if (bitvalue == 1) {
+        regvalue |= bitmask;
     } else {
-        info->ier &= ~UART_IER_ERBFI;
+        regvalue &= ~bitmask;
     }
-    uart_putreg(info->reg_base, UART_IER_OFFSET, info->ier);
+    ua_putreg(reg, offset, regvalue);
 }
 
 /**
-* @brief uart_rxavailable()
+* @brief ua_set_dlab()
 */
-static uint32_t uart_rxavailable(struct tsb_uart_info *info)
+static void ua_set_dlab(uint32_t base, uint8_t value)
 {
-    return (uart_getreg(info->reg_base, UART_LSR_OFFSET) & UART_LSR_DR) != 0;
+    ua_reg_bit_set(base, UA_LCR, UA_DLAB, value);
 }
 
 /**
-* @brief uart_send()
+* @brief ua_get_char()
 */
-static void uart_send(struct tsb_uart_info *info, uint32_t ch)
+static uint8_t ua_get_char(uint32_t base)
 {
-    uart_putreg(info->reg_base, UART_THR_OFFSET, (uart_datawidth_t)ch);
+    return ua_getreg(base, UA_RBR_THR_DLL);
 }
 
 /**
-* @brief uart_txint()
+* @brief ua_put_char()
 */
-static void uart_txint(struct tsb_uart_info *info, uint32_t enable)
+static void ua_put_char(uint32_t base, uint8_t ch)
 {
-    irqstate_t flags;
-
-    flags = irqsave();
-    if (enable) {
-        info->ier |= UART_IER_ETBEI;
-        uart_putreg(info->reg_base, UART_IER_OFFSET, info->ier);
-
-        uart_xmitchars(dev);
-    } else {
-      priv->ier &= ~UART_IER_ETBEI;
-      uart_putreg(info->reg_base, UART_IER_OFFSET, priv->ier);
-    }
-
-  irqrestore(flags);
+    ua_putreg(base, UA_RBR_THR_DLL, ch);
 }
 
 /**
-* @brief uart_txready()
+* @brief ua_put_char()
 */
-static uint32_t uart_txready(struct tsb_uart_info *info)
+static void ua_enable_interrupt(uint32_t base, uint8_t interrupt)
 {
-    return ((uart_getreg(info->reg_base, UART_LSR_OFFSET) & UART_LSR_THRE) != 0);
+    ua_putreg(base, UA_IER_DLH, interrupt);
 }
 
 /**
-* @brief uart_txready()
+* @brief ua_put_char()
 */
-static uint32_t uart_txempty(struct tsb_uart_info *info)
+static void ua_set_divisor(uint32_t base, uint8_t divisor)
 {
-    return ((uart_getreg(info->reg_base, UART_LSR_OFFSET) & UART_LSR_THRE) != 0);
+    ua_set_dlab(1);
+    ua_putreg(base, UA_IER_DLH, divisor);
+    ua_set_dlab(0);
 }
+
+/**
+* @brief ua_set_fifo_trigger()
+*/
+static void ua_set_fifo_trigger(uint32_t base, uint8_t rx_level,
+                                uint8_t tx_level)
+{
+    ua_putreg(base, UA_FCR_IIR, rx_level << UA_RX_FIF0_TRIGGER_SHIFT |
+              tx_level << UA_TX_FIF0_TRIGGER_SHIFT);
+}
+
+/**
+* @brief ua_get_interrupt_id()
+*/
+static uint8_t ua_get_interrupt_id(uint32_t base)
+{
+    return (ua_getreg(base, UA_FCR_IIR) & UA_INTERRUPT_ID_MASK);
+}
+
+static void ua_fifo_reset(uint32_t base)
+{
+    ua_putreg(base, UA_FCR_IIR, UA_TX_FIFO_RESET | UA_RX_FIFO_RESET);
+}
+
+static void ua_fifo_enable(uint32_t base)
+{
+    ua_putreg(base, UA_FCR_IIR, UA_FIFO_ENABLE);
+}
+
+/**
+* @brief ua_set_data_bits()
+*/
+static void ua_set_data_bits(uint32_t base, uint8_t databits)
+{
+    uint8_t lcr = ua_getreg(base, UA_LCR);
+    lcr &= ~UA_DLS_MASK;
+    lcr |= databits;
+    ua_putreg(base, UA_LCR, lcr);
+}
+
+/**
+* @brief ua_set_stop_bit()
+*/
+static void ua_set_stop_bit(uint32_t base, uint8_t stopbit)
+{
+    ua_reg_bit_set(base, UA_LCR, UA_LCR_STOP, stopbit);
+}
+
+/**
+* @brief ua_set_parity_bits()
+*/
+static void ua_set_parity_bits(uint32_t base, uint8_t paritybits)
+{
+    uint8_t lcr = ua_getreg(base, UA_LCR);
+    lcr &= ~(UART_LCR_PEN|UART_LCR_EPS);
+    lcr |= paritybits;
+    ua_putreg(base, UA_LCR, lcr);
+}
+
+/**
+* @brief ua_set_line_ctrl()
+*/
+static void ua_set_line_ctrl(uint32_t base, uint8_t ctrl)
+{
+    uint8_t lcr = ua_getreg(base, UA_LCR);
+    lcr &= ~UA_LCR_MASK;
+    lcr |= ctrl;
+    ua_putreg(base, UA_LCR, lcr);
+}
+
+/**
+* @brief ua_get_line_ctrl()
+*/
+static uint8_t ua_get_line_ctrl(uint32_t base)
+{
+    return ua_getreg(base, UA_LCR) & UA_LCR_MASK;
+}
+
+/**
+* @brief ua_set_auto_flow()
+*/
+static void ua_set_auto_flow(uint32_t base, uint8_t autoflow)
+{
+    ua_reg_bit_set(base, UA_MCR, UA_AUTO_FLOW_ENABLE, autoflow);
+}
+
+/**
+* @brief ua_set_rts()
+*/
+static void ua_set_rts(uint32_t base, uint8_t rts)
+{
+    ua_reg_bit_set(base, UA_MCR, UA_RTS, rts);
+}
+
+/**
+* @brief ua_set_cts()
+*/
+static void ua_set_cts(uint32_t base, uint8_t cts)
+{
+    ua_reg_bit_set(base, UA_MCR, UA_CTS, cts);
+}
+
+/**
+* @brief ua_get_line_status()
+*/
+static uint8_t ua_get_line_status(uint32_t base)
+{
+    return ua_getreg(base, UA_LSR) & UA_LSR_MASK;
+}
+
+/**
+* @brief ua_get_modem_status()
+*/
+static uint8_t ua_get_modem_status(uint32_t base)
+{
+    return ua_getreg(base, UA_MSR);
+}
+
+/**
+* @brief ua_is_tx_fifo_full()
+*/
+static uint8_t ua_is_tx_fifo_full(uint32_t base)
+{
+    return (ua_getreg(base, UA_USR) & UA_USR_TFNF) ? 0 : 1;
+}
+
+/**
+* @brief ua_is_tx_fifo_empty()
+*/
+static uint8_t ua_is_tx_fifo_empty(uint32_t base)
+{
+    return (ua_getreg(base, UA_USR) & UA_USR_TFE) ? 1 : 0;
+}
+
+/**
+* @brief ua_is_rx_fifo_empty()
+*/
+static uint8_t ua_is_rx_fifo_empty()
+{
+    return (ua_getreg(base + UA_USR) & UA_USR_RFNE) ? 0 : 1;
+}
+
 
 /**
 * @brief uart_ms_ls()
@@ -261,39 +375,11 @@ static void uart_recvchars(struct tsb_uart_info *info)
     }
 }
 
-static int recv_fifo_empty(struct tsb_uart_info *info)
-{
-    
-}
-
 /**
 * @brief uart_recv_handler()
 */
 static void recv_handler(struct tsb_uart_info *info)
 {
-    char ch;
-    // while data in fifo and having buffer space
-    // move data from fifo to buffer
-    // if buffer full,
-    //    notify caller to proceed.
-    //    flow control
-    // if fifo is empty
-    //    quit
-
-    // check buffer
-    // 
-
-    while(!recv_fifo_empty()) {
-        ch = get_char(info->reg_base, status);
-        info->recv->buffer[info->recv->head++] = ch;
-        if (info->recv->head >= info->recv->tail) {
-            // ready to invoke callback
-
-            // consider the flow control
-            break;
-        }
-    }
-
     
 }
 
@@ -364,65 +450,56 @@ static int tsb_uart_extract_resource(struct device *dev,
 static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
                                       int databits, int stopbit, int flow)
 {
-    struct tsb_uart_info *info = NULL;
-
+    struct tsb_uart_info *uart_info = NULL;
+    uint8_t lcr = 0;
+    
     if (dev == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
-    
-    /* Clear fifo */
-    uart_putreg(info->reg_base, UART_FCR_OFFSET, UART_FCR_RXRST|UART_FCR_TXRST);
+    uart_info = dev->private;
 
-    /* Set trigger */
-    uart_putreg(info->reg_base, UART_FCR_OFFSET, UART_FCR_RXRST|UART_FCR_TXRST);
+    ua_fifo_reset(uart_info->reg_base);
 
-    /* Set up the LCR */
+    ua_set_fifo_trigger(uart_info->reg_base, UA_RX_FIFO_TRIGGER_1_2,
+                        UA_TX_FIFO_TRIGGER_1_2);
+
     lcr = 0;
     switch (databits) {
     case 5:
-        lcr |= UART_LCR_WLS_5BIT;
+        lcr = UA_DLS_5_BITS;
         break;
     case 6:
-        lcr |= UART_LCR_WLS_6BIT;
+        lcr = UA_DLS_6_BITS;
         break;
     case 7 :
-        lcr |= UART_LCR_WLS_7BIT;
+        lcr = UA_DLS_7_BITS;
         break;
     default:
     case 8 :
-        lcr |= UART_LCR_WLS_8BIT;
+        lcr = UA_DLS_8_BITS;
         break;
     }
+    ua_set_data_bits(uart_info->reg_base, lcr);
 
-    if (stopbit) {
-        lcr |= UART_LCR_STB;
+    ua_set_stop_bit(uart_info->reg_base, stopbit);
+
+    ua_set_auto_flow(flow);
+    uart_info->flow = flow;
+    
+    lcr = 0;
+    if (parity == ODD_PARITY) {
+        lcr |= UA_LCR_PEN;
+    } else if (priv->parity == EVEN_PARITY) {
+        lcr |= (UA_LCR_PEN|UA_LCR_EPS);
     }
+    ua_set_parity_bits(uart_info->reg_base, lcr);
 
-    if (parity == 1)
-    {
-      lcr |= UART_LCR_PEN;
-    }
-     else if (priv->parity == 2)
-    {
-      lcr |= (UART_LCR_PEN|UART_LCR_EPS);
-    }
+    uint32_t divisor = (48000000 >> 4) / baud;
 
-    /* Enter DLAB=1 */
-    uart_putreg(info->reg_base, UART_LCR_OFFSET, (lcr | UART_LCR_DLAB));
+    ua_set_divisor(uart_info->reg_base, divisor);
 
-    /* Set the BAUD divisor */
-    div = uart_divisor(priv);
-    uart_putreg(info->reg_base, UART_DLM_OFFSET, div >> 8);
-    uart_putreg(info->reg_base, UART_DLL_OFFSET, div & 0xff);
-
-    /* Clear DLAB */
-    uart_putreg(info->reg_base, UART_LCR_OFFSET, lcr);
-
-    /* Configure the FIFOs */
-    uart_putreg(info->reg_base, UART_FCR_OFFSET,
-                (UART_FCR_RXTRIGGER_8|UART_FCR_TXRST|UART_FCR_RXRST|UART_FCR_FIFOEN));
+    ua_fifo_enable(uart_info->reg_base);
 
     return SUCCESS;
 }
@@ -441,15 +518,17 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 */
 static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    struct tsb_uart_info *info = NULL;
-
+    struct tsb_uart_info *uart_info = NULL;
+    uint8_t m_ctrl;
+    
     if (dev == NULL || modem_ctrl == NULL) {
         return -EINVAL;
     }
-
-    info = dev->private;
     
-    *modem_ctrl = uart_getreg(info->reg_base, UART_MCR_OFFSET);
+    uart_info = dev->private;
+    
+    *modem_ctrl = ua_getreg(uart_info->reg_base, UA_MSR);
+    *modem_ctrl &= ~UA_AUTO_FLOW_ENABLE;
 
     return SUCCESS;
 }
@@ -468,19 +547,23 @@ static int tsb_uart_get_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 */
 static int tsb_uart_set_modem_ctrl(struct device *dev, uint8_t *modem_ctrl)
 {
-    struct tsb_uart_info *info = NULL;
+    struct tsb_uart_info *uart_info = NULL;
+    uint32_t m_ctrl = 0;
 
     if (dev == NULL || modem_ctrl == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
-    
-    uart_putreg(info->reg_base, UART_MCR_OFFSET, *modem_ctrl);
+    uart_info = dev->private;
+
+    m_ctrl = *modem_ctrl;
+    if (ua_getreg(uart_info->reg_base, UA_MCR) & UA_AUTO_FLOW_ENABLE) {
+        m_ctrl |= UA_AUTO_FLOW_ENABLE;
+    }
+    uart_putreg(uart_info->reg_base, UA_MCR, m_ctrl);
     
     return SUCCESS;
 }
-
 
 /**
 * @brief Get modem status
