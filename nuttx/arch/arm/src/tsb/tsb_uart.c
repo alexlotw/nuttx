@@ -295,37 +295,31 @@ static uint8_t ua_is_rx_fifo_empty()
 */
 static void uart_xmitchars(struct tsb_uart_info *info)
 {
-    uint16_t nbytes = 0;
-
-    while (info->xmit.head != info->xmit.tail && uart_txready(info)) {
-        uart_send(dev, dev->xmit.buffer[dev->xmit.tail]);
-        nbytes++;
-
-        if (++(dev->xmit.tail) >= dev->xmit.size) {
-          dev->xmit.tail = 0;
+    while (!ua_is_tx_fifo_full(uart_info->reg_base)) {
+        ua_put_char(uart_info->reg_base,
+                    uart_info->xmit.buffer[uart_info->xmit.head++])
+        if (uart_info->xmit.head == uart_info->xmit.tail) {
+            ua_disable_interrupt(uart_info->reg_base, UA_IER_ETBEI);
+            if (uart_info->tx_callback) {
+                uart_info->tx_callback(uart_info->xmit.buffer,
+                                       uart_info->xmit.tail, SUCCESS)
+            }
         }
-    }
-
-    if (dev->xmit.head == dev->xmit.tail) {
-        uart_disabletxint(dev);
-    }
-
-    if (nbytes) {
-      uart_datasent(dev);
     }
 }
 
 /**
 * @brief uart_recv()
 */
-static void uart_recvchars(struct tsb_uart_info *uart_info, uint8_t timeout)
+static void uart_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
 {
-    uint8_t ch;
-    
     while (!ua_is_rx_fifo_empty(uart_info->reg_base)) {
-        ch = ua_get_char(uart_info->reg_base);
-        uart_info->recv.buffer[uart_info->recv.head++] = ch;
-        if (uart_info->recv.head == uart_info->recv.tail) {
+        uart_info->recv.buffer[uart_info->recv.head++] =
+                        ua_get_char(uart_info->reg_base);
+                        
+        if (uart_info->recv.head == uart_info->recv.tail ||
+            int_id == UA_INTERRUPT_ID_TO) {
+                
             ua_disable_interrupt(uart_info->reg_base, UA_IER_ERBFI);
             if (uart_info->rx_callback) {
                 uart_info->rx_callback(uart_info->recv.buffer,
@@ -333,58 +327,7 @@ static void uart_recvchars(struct tsb_uart_info *uart_info, uint8_t timeout)
             }
         }
     }
-
-    unsigned int status;
-    int nexthead = dev->recv.head + 1;
-    uint16_t nbytes = 0;
-
-    if (nexthead >= dev->recv.size) {
-        nexthead = 0;
-    }
-
-    while (uart_rxavailable(dev))
-    {
-        bool is_full = (nexthead == dev->recv.tail);
-        char ch;
-
-        if (is_full) {
-            if (uart_rxflowcontrol(dev)) {
-              /* Low-level driver activated RX flow control, exit loop now. */
-
-              break;
-            }
-        }
-
-        ch = uart_receive(dev, &status);
-
-        if (!is_full) {
-          /* Add the character to the buffer */
-
-            dev->recv.buffer[dev->recv.head] = ch;
-            nbytes++;
-
-          /* Increment the head index */
-
-            dev->recv.head = nexthead;
-            if (++nexthead >= dev->recv.size) {
-                nexthead = 0;
-            }
-        }
-    }
-
-    if (nbytes) {
-      uart_datareceived(dev);
-    }
 }
-
-/**
-* @brief uart_recv_handler()
-*/
-static void recv_handler(struct tsb_uart_info *info)
-{
-    
-}
-
 
 /**
 * @brief uart_irq_handler()
@@ -416,25 +359,13 @@ static int uart_irq_handler(int irq, void *context)
             }
             break;
         case UA_INTERRUPT_ID_TX:
-            
+            uart_xmitchars(uart_info);
             break;
+        case UA_INTERRUPT_ID_TO:
         case UA_INTERRUPT_ID_RX:
-        case UA_INTERRUPT_ID_TO
+            uart_recvchars(uart_info, interrupt_id);
             break;
         }
-    }
-    
-    /* Modem status*/ /* Line status */
-    if (iir & (UART_IIR_INTID_MSI | UART_IIR_INTID_RLS)) {
-        uart_ms_ls();
-    }
-    /* Thr empty */
-    if (iir & UART_IIR_INTID_THRE ) {
-        uart_xmit();
-    }
-    /* Receive Data Available (RDA) */  /* Character Time-out Indicator (CTI) */
-    if (iir & (UART_IIR_INTID_RDA | UART_IIR_INTID_CTI) ) {
-        uart_recv();
     }
 }
 
@@ -714,22 +645,22 @@ static int tsb_uart_attach_ms_callback(struct device *dev,
 static int tsb_uart_attach_ls_callback(struct device *dev,
                                        void (*callback)(uint8_t ls))
 {
-    struct tsb_uart_info *info = NULL;
+    struct tsb_uart_info *uart_info = NULL;
 
     if (dev == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
+    uart_info = dev->private;
     
     if (callback == NULL) {
-        info->ier &= ~UART_IER_ELSI;
-        info->ms_callback = NULL;
+        uart_info->ier &= ~UART_IER_ELSI;
+        uart_info->ms_callback = NULL;
         return SUCCESS;
     }
 
-    info->ier |= UART_IER_ELSI;
-    info->ls_callback = callback;
+    uart_info->ier |= UART_IER_ELSI;
+    uart_info->ls_callback = callback;
     return SUCCESS;
 }
 
@@ -759,7 +690,20 @@ static int tsb_uart_start_transmitter(struct device *dev, uint8_t *buffer,
                                       void (*callback)(uint8_t *buffer,
                                                        int length, int error))
 {
-    /* TODO: to implement the function body */
+    struct tsb_uart_info *uart_info = NULL;
+
+    if (dev == NULL) {
+        return -EINVAL;
+    }
+
+    uart_info = dev->private;
+
+    uart_info->xmit.buffer = buffer;
+    uart_info->xmit.head = 0;
+    uart_info->xmit.tail = size;
+    uart_info->xmit.size = size;
+    uart_info->tx_callback = callback;
+    
     return SUCCESS;
 }
 
@@ -804,7 +748,20 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
                                    void (*callback)(uint8_t *buffer, int length,
                                                     int error))
 {
-    /* TODO: to implement the function body */
+    struct tsb_uart_info *uart_info = NULL;
+
+    if (dev == NULL) {
+        return -EINVAL;
+    }
+
+    uart_info = dev->private;
+    
+    uart_info->recv.buffer = buffer;
+    uart_info->recv.head = 0;
+    uart_info->recv.tail = size;
+    uart_info->recv.size = size;
+    uart_info->rx_callback = callback;
+
     return SUCCESS;
 }
 
