@@ -88,6 +88,10 @@ ifeq ($(CONFIG_MANIFEST_I2C), y)
  MANIFEST = simple-i2c-module
 endif
 
+ifeq ($(CONFIG_MANIFEST_UART), y)
+	MANIFEST = simple-uart-module
+endif
+
 ifeq ($(CONFIG_MANIFEST_GPIO_I2C), y)
  MANIFEST = simple-gpio-i2c-module
 endif
@@ -110,6 +114,14 @@ endif
 
 ifeq ($(CONFIG_MANIFEST_GPIO_I2C_VIBRATOR), y)
  MANIFEST = simple-gpio-i2c-vibrator-module
+endif
+
+ifeq ($(CONFIG_MANIFEST_GPIO_I2C_UART), y)
+ MANIFEST = simple-gpio-i2c-uart-module
+endif
+
+ifeq ($(CONFIG_MANIFEST_KITCHEN_SINK), y)
+	MANIFEST = kitchen-sink-module
 endif
 
 ifeq ($(CONFIG_CUSTOM_MANIFEST), y)

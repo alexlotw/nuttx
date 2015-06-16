@@ -12,6 +12,8 @@ config MANIFEST_GPIO
 	bool "GPIO"
 config MANIFEST_I2C
 	bool "I2C"
+config MANIFEST_UART
+	bool "UART"
 config MANIFEST_GPIO_I2C
 	bool "I2C and GPIO"
 config MANIFEST_BATTERY_GPIO_I2C
@@ -22,6 +24,8 @@ config MANIFEST_VIBRATOR
 	bool "Vibrator"
 config MANIFEST_GPIO_I2C_VIBRATOR
 	bool "GPIO, I2C, and Vibrator"
+config MANIFEST_KITCHEN_SINK
+	bool "GPIO, I2C, vibrator, and UART"
 config CUSTOM_MANIFEST
 	bool "Custom manifest"
 endchoice
