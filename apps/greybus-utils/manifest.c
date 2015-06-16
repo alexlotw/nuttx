@@ -45,6 +45,7 @@ extern void gb_battery_register(int cport);
 extern void gb_loopback_register(int cport);
 extern void gb_vibrator_register(int cport);
 extern void gb_usb_register(int cport);
+extern void gb_uart_register(int cport);
 
 struct greybus {
     struct list_head cports;
@@ -141,6 +142,13 @@ void enable_cports(void)
             gb_info("Registering USB greybus driver.\n");
             gb_usb_register(id);
         }
+#endif
+
+#ifdef CONFIG_GREYBUS_UART_PHY
+            if (protocol == GREYBUS_PROTOCOL_UART) {
+                gb_info("Registering Uart greybus driver. id= %d\n", id);
+                gb_uart_register(id);
+            }
 #endif
     }
 }
