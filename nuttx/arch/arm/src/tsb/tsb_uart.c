@@ -136,7 +136,11 @@ static void ua_reg_bit_clr(uint32_t reg, uint32_t offset, uint8_t bitmask)
 */
 static void ua_set_dlab(uint32_t base, uint8_t value)
 {
-    ua_reg_bit_set(base, UA_LCR, UA_DLAB, value);
+    if (value) {
+        ua_reg_bit_set(base, UA_LCR, UA_DLAB);
+    } else {
+        ua_reg_bit_clr(base, UA_LCR, UA_DLAB);
+    }
 }
 
 /**
@@ -176,9 +180,9 @@ static void ua_disable_interrupt(uint32_t base, uint8_t interrupt)
 */
 static void ua_set_divisor(uint32_t base, uint8_t divisor)
 {
-    ua_set_dlab(1);
+    ua_set_dlab(base, 1);
     ua_putreg(base, UA_IER_DLH, divisor);
-    ua_set_dlab(0);
+    ua_set_dlab(base, 0);
 }
 
 /**
@@ -225,7 +229,7 @@ static void ua_set_data_bits(uint32_t base, uint8_t databits)
 */
 static void ua_set_stop_bit(uint32_t base, uint8_t stopbit)
 {
-    ua_reg_bit_set(base, UA_LCR, UA_LCR_STOP, stopbit);
+    ua_reg_bit_set(base, UA_LCR, UA_LCR_STOP);
 }
 
 /**
@@ -263,7 +267,11 @@ static uint8_t ua_get_line_ctrl(uint32_t base)
 */
 static void ua_set_auto_flow(uint32_t base, uint8_t autoflow)
 {
-    ua_reg_bit_set(base, UA_MCR, UA_AUTO_FLOW_ENABLE, autoflow);
+    if (autoflow) {
+        ua_reg_bit_set(base, UA_MCR, UA_AUTO_FLOW_ENABLE);
+    } else {
+        ua_reg_bit_clr(base, UA_MCR, UA_AUTO_FLOW_ENABLE);
+    }
 }
 
 /**
@@ -285,24 +293,24 @@ static uint8_t ua_is_tx_fifo_empty(uint32_t base)
 /**
 * @brief ua_is_rx_fifo_empty()
 */
-static uint8_t ua_is_rx_fifo_empty()
+static uint8_t ua_is_rx_fifo_empty(uint32_t base)
 {
-    return (ua_getreg(base + UA_USR) & UA_USR_RFNE) ? 0 : 1;
+    return (ua_getreg(base, UA_USR) & UA_USR_RFNE) ? 0 : 1;
 }
 
 /**
 * @brief uart_xmitchars()
 */
-static void uart_xmitchars(struct tsb_uart_info *info)
+static void uart_xmitchars(struct tsb_uart_info *uart_info)
 {
     while (!ua_is_tx_fifo_full(uart_info->reg_base)) {
         ua_put_char(uart_info->reg_base,
-                    uart_info->xmit.buffer[uart_info->xmit.head++])
+                    uart_info->xmit.buffer[uart_info->xmit.head++]);
         if (uart_info->xmit.head == uart_info->xmit.tail) {
             ua_disable_interrupt(uart_info->reg_base, UA_IER_ETBEI);
             if (uart_info->tx_callback) {
                 uart_info->tx_callback(uart_info->xmit.buffer,
-                                       uart_info->xmit.tail, SUCCESS)
+                                       uart_info->xmit.tail, SUCCESS);
             }
         }
     }
@@ -323,7 +331,7 @@ static void uart_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
             ua_disable_interrupt(uart_info->reg_base, UA_IER_ERBFI);
             if (uart_info->rx_callback) {
                 uart_info->rx_callback(uart_info->recv.buffer,
-                                       uart_info->recv.tail, SUCCESS)
+                                       uart_info->recv.tail, SUCCESS);
             }
         }
     }
@@ -334,7 +342,7 @@ static void uart_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
 */
 static int uart_irq_handler(int irq, void *context)
 {
-    struct struct tsb_uart_info *uart_info = saved_dev->private;
+    struct tsb_uart_info *uart_info = saved_dev->private;
     uint8_t interrupt_id;
     uint8_t status;
 
@@ -372,22 +380,22 @@ static int uart_irq_handler(int irq, void *context)
 /**
 * @brief tsb_uart_extract_resource()
 */
-static int tsb_uart_extract_resource(struct device *dev,
-                                     struct tsb_uart_info * info)
+static int tsb_uart_extract_resources(struct device *dev,
+                                     struct tsb_uart_info * uart_info)
 {
     struct device_resource *r = NULL;
 
-    r = device_resource_get_by_name(dev, DEVICE_RESOUCE_TYPE_REGS, "reg_base");
+    r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_REGS, "reg_base");
     if (!r)
         return -EINVAL;
 
-    info->reg_base = r->start;
+    uart_info->reg_base = r->start;
 
-    r = device_resource_get_by_name(dev, DEVICE_RESOUCE_TYPE_IRQ, "irq_uart");
+    r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_IRQ, "irq_uart");
     if (!r)
         return -EINVAL;
 
-    info->uart_irq = (int)r->start;
+    uart_info->uart_irq = (int)r->start;
 
     return SUCCESS;
 }
@@ -449,7 +457,7 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
     lcr = 0;
     if (parity == ODD_PARITY) {
         lcr |= UA_LCR_PEN;
-    } else if (priv->parity == EVEN_PARITY) {
+    } else if (parity == EVEN_PARITY) {
         lcr |= (UA_LCR_PEN|UA_LCR_EPS);
     }
     ua_set_parity_bits(uart_info->reg_base, lcr);
@@ -591,7 +599,7 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 
     uart_info = dev->private;
 
-    ua_reg_bit_set(info->reg_base, UA_LCR, UA_LCR_BREAK, break_on);
+    ua_reg_bit_set(uart_info->reg_base, UA_LCR, UA_LCR_BREAK);
     
     return SUCCESS;
 }
@@ -610,22 +618,22 @@ static int tsb_uart_set_break(struct device *dev, uint8_t break_on)
 static int tsb_uart_attach_ms_callback(struct device *dev,
                                        void (*callback)(uint8_t ms))
 {
-    struct tsb_uart_info *info = NULL;
+    struct tsb_uart_info *uart_info = NULL;
 
     if (dev == NULL) {
         return -EINVAL;
     }
 
-    info = dev->private;
+    uart_info = dev->private;
     
     if (callback == NULL) {
-        info->ier &= ~UART_IER_EDSSI;
-        info->ms_callback = NULL;
+        uart_info->ier &= ~UART_IER_EDSSI;
+        uart_info->ms_callback = NULL;
         return SUCCESS;
     }
 
-    info->ier |= UART_IER_EDSSI;
-    info->ms_callback = callback;
+    uart_info->ier |= UART_IER_EDSSI;
+    uart_info->ms_callback = callback;
     return SUCCESS;
 }
 
@@ -700,8 +708,8 @@ static int tsb_uart_start_transmitter(struct device *dev, uint8_t *buffer,
 
     uart_info->xmit.buffer = buffer;
     uart_info->xmit.head = 0;
-    uart_info->xmit.tail = size;
-    uart_info->xmit.size = size;
+    uart_info->xmit.tail = length;
+    uart_info->xmit.size = length;
     uart_info->tx_callback = callback;
     
     return SUCCESS;
@@ -758,8 +766,8 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
     
     uart_info->recv.buffer = buffer;
     uart_info->recv.head = 0;
-    uart_info->recv.tail = size;
-    uart_info->recv.size = size;
+    uart_info->recv.tail = length;
+    uart_info->recv.size = length;
     uart_info->rx_callback = callback;
 
     return SUCCESS;
@@ -798,18 +806,18 @@ static int tsb_uart_stop_receiver(struct device *dev)
 */
 static int tsb_uart_dev_open(struct device *dev)
 {
-    struct tsb_uart_info *info = dev->private;
+    struct tsb_uart_info *uart_info = dev->private;
     irqstate_t flags;
     int ret = SUCCESS;
 
     flags = irqsave();
 
-    if (info->flags & TSB_UART_FLAG_OPEN) {
+    if (uart_info->flags & TSB_UART_FLAG_OPEN) {
         ret = -EBUSY;
         goto err_irqrestore;
     }
 
-    info->flags = TSB_UART_FLAG_OPEN;
+    uart_info->flags = TSB_UART_FLAG_OPEN;
 
 err_irqrestore:
     irqrestore(flags);
@@ -829,24 +837,24 @@ err_irqrestore:
 */
 static void tsb_uart_dev_close(struct device *dev)
 {
-    struct tsb_uart_info *info = dev->private;
+    struct tsb_uart_info *uart_info = dev->private;
     irqstate_t flags;
 
     flags = irqsave();
 
-    if (!(info->flags & TSB_UART_FLAG_OPEN)) {
+    if (!(uart_info->flags & TSB_UART_FLAG_OPEN)) {
         goto err_irqrestore;
     }
 
-    if (info->flags & TSB_UART_FLAG_XMIT) {
+    if (uart_info->flags & TSB_UART_FLAG_XMIT) {
         tsb_uart_stop_transmitter(dev);
     }
 
-    if (info->flags & TSB_UART_FLAG_XMIT) {
+    if (uart_info->flags & TSB_UART_FLAG_XMIT) {
         tsb_uart_stop_receiver(dev);
     }
 
-    info->flags = 0;
+    uart_info->flags = 0;
 
 err_irqrestore:
     irqrestore(flags);
@@ -868,29 +876,29 @@ err_irqrestore:
 */
 static int tsb_uart_dev_probe(struct device *dev)
 {
-    struct tsb_uart_info *info;
+    struct tsb_uart_info *uart_info;
     irqstate_t flags;
     int ret = SUCCESS;
 
-    info = zalloc(sizeof(*info));
-    if (!info)
+    uart_info = zalloc(sizeof(*uart_info));
+    if (!uart_info)
         return -ENOMEM;
 
-    lldbg("LL uart info struct: 0x%08p\n", info);
+    lldbg("LL uart info struct: 0x%08p\n", uart_info);
 
-    ret = tsb_uart_extract_resources(dev, info);
+    ret = tsb_uart_extract_resources(dev, uart_info);
     if (ret)
         goto err_free_info;
 
     flags = irqsave();
 
-    ret = irq_attach(info->uart_irq, uart_irq_handler);
+    ret = irq_attach(uart_info->uart_irq, uart_irq_handler);
     if (ret != SUCCESS) {
         goto err_free_info;
     }
 
-    info->dev = dev;
-    dev->private = info;
+    uart_info->dev = dev;
+    dev->private = uart_info;
     saved_dev = dev;
 
     irqrestore(flags);
@@ -898,9 +906,9 @@ static int tsb_uart_dev_probe(struct device *dev)
     return SUCCESS;
 
 err_attach_irq:
-    irq_detach(info->uart_irq);
+    irq_detach(uart_info->uart_irq);
 err_free_info:
-    free(info);
+    free(uart_info);
 
     return ret;
 }
@@ -918,19 +926,19 @@ err_free_info:
 */
 static void tsb_uart_dev_remove(struct device *dev)
 {
-    struct tsb_uart_info *info = dev->private;
+    struct tsb_uart_info *uart_info = dev->private;
     irqstate_t flags;
 
     flags = irqsave();
 
-    irq_detach(info->uart_irq);
+    irq_detach(uart_info->uart_irq);
 
     saved_dev = NULL;
     dev->private = NULL;
 
     irqrestore(flags);
 
-    free(info);
+    free(uart_info);
 }
 
 
