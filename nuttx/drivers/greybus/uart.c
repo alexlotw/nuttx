@@ -47,6 +47,7 @@
 #define GB_UART_VERSION_MAJOR   0
 #define GB_UART_VERSION_MINOR   1
 
+<<<<<<< HEAD
 /* Reserved operations for rx data buffer. */
 #define MAX_RX_OPERATION        5
 #define MAX_RX_BUF_SIZE         256
@@ -58,6 +59,19 @@
 /**
  * The buffer in operation structure.
  */
+=======
+/* reserved operations for rx data buffer */
+#define MAX_RX_OPERATION        5
+#define MAX_RX_BUF_SIZE         256
+
+/* error code */
+#define SUCCESS                 0
+
+/* report error id */
+#define GB_UART_EVENT_PROTOCOL_ERROR    1
+#define GB_UART_EVENT_DEVICE_ERROR      2
+
+>>>>>>> uart-dummy-driver-review
 struct op_node {
     /** queue entry */
     sq_entry_t          entry;
@@ -69,9 +83,12 @@ struct op_node {
     uint8_t             *buffer;
 };
 
+<<<<<<< HEAD
 /**
  * UART protocol information structure.
  */
+=======
+>>>>>>> uart-dummy-driver-review
 struct gb_uart_info {
     /** cport from greybus */
     uint16_t            cport;
@@ -111,6 +128,7 @@ struct gb_uart_info {
     struct device   *dev;
 };
 
+<<<<<<< HEAD
 /* The structure for keeping protocol global data. */
 static struct gb_uart_info *info = NULL;
 
@@ -120,6 +138,17 @@ static struct gb_uart_info *info = NULL;
  * @param queue The target queue to put.
  * @param node The pointer to node.
  * @return None.
+=======
+/* the structure for keeping protocol global data */
+static struct gb_uart_info *info = NULL;
+
+/**
+ * @brief Put the node back of queue
+ *
+ * @param queue the target queue to put
+ * @param node the pointer to node
+ * @return none
+>>>>>>> uart-dummy-driver-review
  */
 static void put_node_back(sq_queue_t *queue, struct op_node *node)
 {
@@ -131,10 +160,18 @@ static void put_node_back(sq_queue_t *queue, struct op_node *node)
 }
 
 /**
+<<<<<<< HEAD
  * @brief Get a node from the queue.
  *
  * @param queue The target queue.
  * @return A pointer to the node or NULL for no node to get.
+=======
+ * @brief Get a node from queue
+ *
+ * @param queue the target queue
+ * @return a node pointer or NULL for no node to return
+ * @retval the node pointer or NULL for no node.
+>>>>>>> uart-dummy-driver-review
  */
 static struct op_node *get_node_from(sq_queue_t *queue)
 {
@@ -153,13 +190,22 @@ static struct op_node *get_node_from(sq_queue_t *queue)
 }
 
 /**
+<<<<<<< HEAD
  * @brief Report the error.
+=======
+ * @brief Report the error
+>>>>>>> uart-dummy-driver-review
  *
  * When error in callback or thread, function use this to report the error
  * instead of return error code.
  *
+<<<<<<< HEAD
  * @param error The error id.
  * @return None.
+=======
+ * @param error the error id
+ * @return none
+>>>>>>> uart-dummy-driver-review
  */
 static void uart_report_error(int error, const char *func_name)
 {
@@ -184,10 +230,17 @@ static void uart_report_error(int error, const char *func_name)
  *
  * This function is allocating operation and use them as receiving buffers.
  *
+<<<<<<< HEAD
  * @param max_nodes Maximum nodes.
  * @param buf_size Buffer size in operation.
  * @param queue Target queue.
  * @return 0 for success, -errno for failures.
+=======
+ * @param max_nodes maximum nodes
+ * @param buf_size buffer size in operation
+ * @param queue target queue
+ * @return SUCCESS on success, error code on failure.
+>>>>>>> uart-dummy-driver-review
  */
 static int uart_alloc_op(int max_nodes, int buf_size, sq_queue_t *queue)
 {
@@ -216,7 +269,11 @@ static int uart_alloc_op(int max_nodes, int buf_size, sq_queue_t *queue)
         put_node_back(queue, node);
     }
 
+<<<<<<< HEAD
     return 0;
+=======
+    return SUCCESS;
+>>>>>>> uart-dummy-driver-review
 }
 
 /**
@@ -224,7 +281,11 @@ static int uart_alloc_op(int max_nodes, int buf_size, sq_queue_t *queue)
  *
  * This funciton destroy operations and node memory.
  *
+<<<<<<< HEAD
  * @param queue Target queue.
+=======
+ * @param queue target queue
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void uart_free_op(sq_queue_t *queue)
@@ -245,7 +306,11 @@ static void uart_free_op(sq_queue_t *queue)
  * Callback for device driver modem status changes. This function can be called
  * when device driver detect modem status changes.
  *
+<<<<<<< HEAD
  * @param ms The updated modem status.
+=======
+ * @param ms the updated modem status
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void uart_ms_callback(uint8_t ms)
@@ -261,7 +326,11 @@ static void uart_ms_callback(uint8_t ms)
  * Callback for device driver line status changes. This function can be called
  * when device driver detect line status changes.
  *
+<<<<<<< HEAD
  * @param ls The updated modem status.
+=======
+ * @param ls the updated modem status
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void uart_ls_callback(uint8_t ls)
@@ -279,15 +348,25 @@ static void uart_ls_callback(uint8_t ls)
  * It put the current operation to received queue and gets another operation to
  * continue receiving. Then notifies rx thread to process.
  *
+<<<<<<< HEAD
  * @param buffer Data buffer.
  * @param length Received data length.
  * @param error Error code if the driver operation.
+=======
+ * @param buffer data buffer.
+ * @param length received data length.
+ * @param error error code if the driver encontering.
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void uart_rx_callback(uint8_t *buffer, int length, int error)
 {
     struct op_node *node = NULL;
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
 
     *info->rx_node->data_size = length;
     put_node_back(&info->data_queue, info->rx_node);
@@ -318,8 +397,13 @@ static void uart_rx_callback(uint8_t *buffer, int length, int error)
  * This function parses the UART modem and line status to the bitmask of
  * protocol serial state.
  *
+<<<<<<< HEAD
  * @param data The regular thread data.
  * @return The parsed value of protocol serial state bitmask.
+=======
+ * @param data the regular thread data.
+ * @return the parsed value of protocol serial state bitmask.
+>>>>>>> uart-dummy-driver-review
  */
 static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
 {
@@ -357,14 +441,22 @@ static uint16_t parse_ms_ls_registers(uint8_t modem_status, uint8_t line_status)
  * uses the operation to send the event to the peer. It only sends the required
  * status for protocol, not the all status in UART.
  *
+<<<<<<< HEAD
  * @param data The regular thread data.
+=======
+ * @param data the regular thread data.
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void *uart_status_thread(void *data)
 {
     uint16_t updated_status = 0;
     struct gb_uart_serial_state_request *request;
+<<<<<<< HEAD
     int ret = 0;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
 
     while (1) {
         sem_wait(&info->status_sem);
@@ -401,13 +493,21 @@ static void *uart_status_thread(void *data)
  * If protocol is running out of operation, once it gets a free operation,
  * it passes to driver for continuing the receiving.
  *
+<<<<<<< HEAD
  * @param data The regular thread data.
+=======
+ * @param data the regular thread data.
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void *uart_rx_thread(void *data)
 {
     struct op_node *node = NULL;
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
 
     while (1) {
         sem_wait(&info->rx_sem);
@@ -419,7 +519,11 @@ static void *uart_rx_thread(void *data)
         node = get_node_from(&info->data_queue);
         if (!node) {
             ret = gb_operation_send_request(node->operation, NULL, false);
+<<<<<<< HEAD
             if (ret) {
+=======
+            if (ret != SUCCESS) {
+>>>>>>> uart-dummy-driver-review
                 uart_report_error(GB_UART_EVENT_PROTOCOL_ERROR, __func__);
             }
             put_node_back(&info->free_queue, node);
@@ -471,11 +575,19 @@ static void uart_status_cb_deinit(void)
  * for sending the status change event to peer.
  *
  * @param None.
+<<<<<<< HEAD
  * @return 0 on success, error code on failure.
  */
 static int uart_status_cb_init(void)
 {
     int ret;
+=======
+ * @return SUCCESS on success, error code on failure.
+ */
+static int uart_status_cb_init(void)
+{
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
 
     info->ms_ls_operation =
             gb_operation_create(info->cport,
@@ -495,7 +607,11 @@ static int uart_status_cb_init(void)
         return -ret;
     }
 
+<<<<<<< HEAD
     return 0;
+=======
+    return SUCCESS;
+>>>>>>> uart-dummy-driver-review
 }
 
 /**
@@ -526,11 +642,19 @@ static void uart_receiver_cb_deinit(void)
  * thread.
  *
  * @param None.
+<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
  */
 static int uart_receiver_cb_init(void)
 {
     int ret;
+=======
+ * @return SUCCESS on success, error code on failure.
+ */
+static int uart_receiver_cb_init(void)
+{
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
 
     sq_init(&info->free_queue);
     sq_init(&info->data_queue);
@@ -553,7 +677,11 @@ static int uart_receiver_cb_init(void)
         return ret;
     }
 
+<<<<<<< HEAD
     return 0;
+=======
+    return SUCCESS;
+>>>>>>> uart-dummy-driver-review
 }
 
 /**
@@ -562,7 +690,11 @@ static int uart_receiver_cb_init(void)
  * Returns the major and minor Greybus UART protocol version number supported
  * by the UART device.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return GB_OP_SUCCESS on success, error code on failure.
  */
 static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
@@ -584,12 +716,20 @@ static uint8_t gb_uart_protocol_version(struct gb_operation *operation)
  * Requests that the UART device begin transmitting characters. One or more
  * bytes to be transmitted will be supplied.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return GB_OP_SUCCESS on success, error code on failure.
  */
 static uint8_t gb_uart_send_data(struct gb_operation *operation)
 {
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
     int sent = 0;
     struct gb_uart_send_data_request *request =
                     gb_operation_get_request_payload(operation);
@@ -609,12 +749,20 @@ static uint8_t gb_uart_send_data(struct gb_operation *operation)
  * Sets the line settings of the UART to the specified baud rate, format,
  * parity, and data bits.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return GB_OP_SUCCESS on success, error code on failure.
  */
 static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
 {
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
     int baud, parity, databits, stopbit, flow;
     struct gb_serial_line_coding_request *request =
                     gb_operation_get_request_payload(operation);
@@ -679,12 +827,20 @@ static uint8_t gb_uart_set_line_coding(struct gb_operation *operation)
  *
  * Controls RTS and DTR line states of the UART.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return GB_OP_SUCCESS on success, error code on failure.
  */
 static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
 {
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
     uint8_t modem_ctrl = 0;
     struct gb_uart_set_control_line_state_request *request =
                 gb_operation_get_request_payload(operation);
@@ -719,12 +875,20 @@ static uint8_t gb_uart_set_control_line_state(struct gb_operation *operation)
  *
  * Requests that the UART generate a break condition on its transmit line.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return GB_OP_SUCCESS on success, error code on failure.
  */
 static uint8_t gb_uart_send_break(struct gb_operation *operation)
 {
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
     struct gb_uart_set_break_request *request =
                   gb_operation_get_request_payload(operation);
 
@@ -742,12 +906,20 @@ static uint8_t gb_uart_send_break(struct gb_operation *operation)
  * This function perform the protocto initialization function, such as open
  * the cooperation device driver, launch threads, create buffers etc.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport
+>>>>>>> uart-dummy-driver-review
  * @return GB_OP_SUCCESS on success, error code on failure.
  */
 static int gb_uart_init(unsigned int cport)
 {
+<<<<<<< HEAD
     int ret;
+=======
+    int ret = SUCCESS;
+>>>>>>> uart-dummy-driver-review
     uint8_t ms = 0, ls = 0;
 
     info = zalloc(sizeof(*info));
@@ -801,7 +973,11 @@ static int gb_uart_init(unsigned int cport)
     info->require_node = 1;
     sem_post(&info->rx_sem);
 
+<<<<<<< HEAD
     return 0;
+=======
+    return SUCCESS;
+>>>>>>> uart-dummy-driver-review
 
 init_err:
     uart_status_cb_deinit();
@@ -814,7 +990,11 @@ init_err:
  *
  * This function can be called when protocol terminated.
  *
+<<<<<<< HEAD
  * @param operation The pointer to structure of gb_operation.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 static void gb_uart_exit(unsigned int cport)
@@ -828,8 +1008,11 @@ static void gb_uart_exit(unsigned int cport)
     uart_receiver_cb_deinit();
 
     device_close(info->dev);
+<<<<<<< HEAD
 
     free(info);
+=======
+>>>>>>> uart-dummy-driver-review
 }
 
 static struct gb_operation_handler gb_uart_handlers[] = {
@@ -853,7 +1036,11 @@ struct gb_driver uart_driver = {
  *
  * This function can be called by greybus to register the UART protocol.
  *
+<<<<<<< HEAD
  * @param cport The number of CPort.
+=======
+ * @param cport the number of cport.
+>>>>>>> uart-dummy-driver-review
  * @return None.
  */
 void gb_uart_register(int cport)
