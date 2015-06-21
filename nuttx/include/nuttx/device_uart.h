@@ -26,13 +26,8 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-<<<<<<< HEAD
 #ifndef __INCLUDE_NUTTX_DEVICE_UART_H
 #define __INCLUDE_NUTTX_DEVICE_UART_H
-=======
-#ifndef __DEVICE_UART_H
-#define __DEVICE_UART_H
->>>>>>> uart-dummy-driver-review
 
 #include <assert.h>
 #include <nuttx/util.h>
@@ -90,12 +85,9 @@
 #define MSR_RI          BIT(6)      /* Ring Indicator */
 #define MSR_DCD         BIT(7)      /* Data Carrier Detect */
 
-<<<<<<< HEAD
 /**
  * UART device driver ops.
  */
-=======
->>>>>>> uart-dummy-driver-review
 struct device_uart_type_ops {
     /** UART set_configuration() function pointer */
     int (*set_configuration)(struct device *dev, int baud, int parity,
@@ -130,10 +122,6 @@ struct device_uart_type_ops {
     int (*stop_receiver)(struct device *dev);
 };
 
-<<<<<<< HEAD
-=======
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART set_configuration function
  *
@@ -145,13 +133,8 @@ struct device_uart_type_ops {
  * @param parity - the value of parity defined in Parity definition
  * @param databits - the number of data bits between 5 to 8 bits.
  * @param stopbits - the value stop bit defined in Stopbits definition
-<<<<<<< HEAD
  * @param flow 0 for disable flow control, 1 for enable flow control.
  * @return 0 for success, -errno for failures.
-=======
- * @param 0 for disable flow control, 1 for enable flow control.
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_set_configuration(struct device *dev,
                                                 int baud, int parity,
@@ -169,16 +152,9 @@ static inline int device_uart_set_configuration(struct device *dev,
                     set_configuration(dev, baud, parity, databits, stopbit,
                                       flow);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART get_modem_ctrl function
  *
@@ -186,11 +162,7 @@ static inline int device_uart_set_configuration(struct device *dev,
  *
  * @param dev pointer to the UART device structure
  * @param modem_ctrl output value as bitmask of Modem control definition.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_get_modem_ctrl(struct device *dev,
                                              uint8_t *modem_ctrl)
@@ -205,16 +177,9 @@ static inline int device_uart_get_modem_ctrl(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     get_modem_ctrl(dev, modem_ctrl);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART set_modem_ctrl function
  *
@@ -222,11 +187,7 @@ static inline int device_uart_get_modem_ctrl(struct device *dev,
  *
  * @param dev pointer to the UART device structure
  * @param modem_ctrl set value as bitmask of Modem control definition.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_set_modem_ctrl(struct device *dev,
                                              uint8_t *modem_ctrl)
@@ -241,16 +202,9 @@ static inline int device_uart_set_modem_ctrl(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     set_modem_ctrl(dev, modem_ctrl);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART get_modem_status function
  *
@@ -258,11 +212,7 @@ static inline int device_uart_set_modem_ctrl(struct device *dev,
  *
  * @param dev pointer to the UART device structure
  * @param modem_status output value as bitmask of Modem status definition.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_get_modem_status(struct device *dev,
                                                uint8_t *modem_status)
@@ -277,16 +227,9 @@ static inline int device_uart_get_modem_status(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     get_modem_status(dev, modem_status);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART get_line_status function
  *
@@ -294,11 +237,7 @@ static inline int device_uart_get_modem_status(struct device *dev,
  *
  * @param dev pointer to the UART device structure
  * @param line_status output value as bitmask of Line status definition.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_get_line_status(struct device *dev,
                                               uint8_t *line_status)
@@ -313,16 +252,9 @@ static inline int device_uart_get_line_status(struct device *dev,
         return dev->driver->ops->type_ops.uart->get_line_status(dev,
                                                                 line_status);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART set_break function
  *
@@ -330,12 +262,7 @@ static inline int device_uart_get_line_status(struct device *dev,
  *
  * @param dev pointer to the UART device structure
  * @param break_on break state value, it should be 0 or 1.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
 {
@@ -348,16 +275,9 @@ static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
     if (dev->driver->ops->type_ops.uart->set_break)
         return dev->driver->ops->type_ops.uart->set_break(dev, break_on);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART attach_ms_callback function
  *
@@ -366,11 +286,7 @@ static inline int device_uart_set_break(struct device *dev, uint8_t break_on)
  *
  * @param dev pointer to the UART device structure
  * @param callback null means caller doesn’t need this event.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_attach_ms_callback(struct device *dev,
                                                  void (*callback)(uint8_t ms))
@@ -385,16 +301,9 @@ static inline int device_uart_attach_ms_callback(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     attach_ms_callback(dev, callback);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART attach_ls_callback function
  *
@@ -403,11 +312,7 @@ static inline int device_uart_attach_ms_callback(struct device *dev,
  *
  * @param dev pointer to the UART device structure
  * @param callback null means caller doesn’t need this event.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_attach_ls_callback(struct device *dev,
                                                  void (*callback)(uint8_t ls))
@@ -422,16 +327,9 @@ static inline int device_uart_attach_ls_callback(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     attach_ls_callback(dev, callback);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART start_transmitter function
  *
@@ -445,11 +343,7 @@ static inline int device_uart_attach_ls_callback(struct device *dev,
  * @param sent the length of transmitted data in block mode.
  * @param callback a callback function called when transmitting finished,
  *        timeout or errors.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_start_transmitter(struct device *dev,
                         uint8_t *buffer, int length, void *dma,
@@ -466,27 +360,16 @@ static inline int device_uart_start_transmitter(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     start_transmitter(dev, buffer, length, dma, sent, callback);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART stop_transmitter function
  *
  * This function is to stop the data transmit in blocking or non-blocking mode.
  *
  * @param dev pointer to the UART device structure
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_stop_transmitter(struct device *dev)
 {
@@ -499,16 +382,9 @@ static inline int device_uart_stop_transmitter(struct device *dev)
     if (dev->driver->ops->type_ops.uart->stop_transmitter)
         return dev->driver->ops->type_ops.uart->stop_transmitter(dev);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART start_receiver function
  *
@@ -522,11 +398,7 @@ static inline int device_uart_stop_transmitter(struct device *dev)
  * @param got the length of received data in blocking mode.
  * @param callback a callback function called when receiving finished, timeout
  *                 or errors.
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_start_receiver(struct device *dev,
                         uint8_t* buffer, int length, void *dma,
@@ -543,27 +415,16 @@ static inline int device_uart_start_receiver(struct device *dev,
         return dev->driver->ops->type_ops.uart->
                     start_receiver(dev, buffer, length, dma, got, callback);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
-=======
-    return -EOPNOTSUPP;
-}
-
-
->>>>>>> uart-dummy-driver-review
 /**
  * @brief UART stop_receiver function
  *
  * The function is to stop the data receiving in blocking or non-blocking mode.
  *
  * @param dev pointer to the UART device structure
-<<<<<<< HEAD
  * @return 0 for success, -errno for failures.
-=======
- * @return SUCCESS on success, error code on failure.
->>>>>>> uart-dummy-driver-review
  */
 static inline int device_uart_stop_receiver(struct device *dev)
 {
@@ -576,15 +437,7 @@ static inline int device_uart_stop_receiver(struct device *dev)
     if (dev->driver->ops->type_ops.uart->stop_receiver)
         return dev->driver->ops->type_ops.uart->stop_receiver(dev);
 
-<<<<<<< HEAD
     return -ENOSYS;
 }
 
 #endif /* __INCLUDE_NUTTX_DEVICE_UART_H */
-=======
-    return -EOPNOTSUPP;
-}
-
-
-#endif /* __DEVICE_UART_H */
->>>>>>> uart-dummy-driver-review
