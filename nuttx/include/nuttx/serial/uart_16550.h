@@ -179,6 +179,7 @@
 #  undef CONFIG_16550_UART2_SERIAL_CONSOLE
 #  undef CONFIG_16550_UART3_SERIAL_CONSOLE
 #  undef HAVE_16550_CONSOLE
+//#  define HAVE_16550_CONSOLE 1
 #endif
 
 /* Register offsets *****************************************************************/

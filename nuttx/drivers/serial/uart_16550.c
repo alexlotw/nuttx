@@ -299,6 +299,7 @@ static uart_dev_t g_uart3port =
 
 #if defined(CONFIG_16550_UART0_SERIAL_CONSOLE)
 #  define CONSOLE_DEV     g_uart0port    /* UART0=console */
+//#   undef CONSOLE_DEV  
 #  define TTYS0_DEV       g_uart0port    /* UART0=ttyS0 */
 #  ifdef CONFIG_16550_UART1
 #    define TTYS1_DEV     g_uart1port    /* UART0=ttyS0;UART1=ttyS1 */
@@ -475,6 +476,7 @@ static inline uart_datawidth_t u16550_serialin(struct u16550_s *priv, int offset
 
 static inline void u16550_serialout(struct u16550_s *priv, int offset, uart_datawidth_t value)
 {
+	
   uart_putreg(priv->uartbase, offset, value);
 }
 
@@ -1138,10 +1140,12 @@ void up_serialinit(void)
  *   Provide priority, low-level access to support OS debug  writes
  *
  ****************************************************************************/
-
+#if 0
 #ifdef HAVE_16550_CONSOLE
 int up_putc(int ch)
 {
+#if 0
+	
   struct u16550_s *priv = (struct u16550_s*)CONSOLE_DEV.priv;
 #ifndef CONFIG_SUPPRESS_SERIAL_INTS
   uart_datawidth_t ier;
@@ -1149,6 +1153,7 @@ int up_putc(int ch)
   u16550_disableuartint(priv, &ier);
 #endif
 
+    
   /* Check for LF */
 
   if (ch == '\n')
@@ -1159,11 +1164,53 @@ int up_putc(int ch)
     }
 
   u16550_putc(priv, ch);
+  
+ 
 #ifndef CONFIG_SUPPRESS_SERIAL_INTS
   u16550_restoreuartint(priv, ier);
 #endif
   return ch;
+
+
+
+
+  struct u16550_s *priv = (struct u16550_s*)CONSOLE_DEV.priv;
+#ifndef CONFIG_SUPPRESS_SERIAL_INTS
+  uart_datawidth_t ier;
+
+  u16550_disableuartint(priv, &ier);
+#endif
+
+
+    if (ch == '\n') {
+        up_lowputc('\r');
+    }
+
+    up_lowputc(ch);
+
+
+#ifndef CONFIG_SUPPRESS_SERIAL_INTS
+  u16550_restoreuartint(priv, ier);
+#endif
+    return ch;
+
+
+#else
+
+
+	 if (ch == '\n') {
+        up_lowputc('\r');
+    }
+
+    up_lowputc(ch);
+    
+	return ch;
+
+
+#endif
+
 }
+#endif
 #endif
 
 #endif /* CONFIG_16550_UART */

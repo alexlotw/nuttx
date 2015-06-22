@@ -37,6 +37,17 @@
 #include "up_arch.h"
 
 
+#include <stddef.h>
+#include <string.h>
+#include <errno.h>
+#include <nuttx/lib.h>
+#include <nuttx/kmalloc.h>
+#include <nuttx/wqueue.h>
+#include <nuttx/device.h>
+#include <nuttx/device_uart.h>
+
+
+
 #ifdef CONFIG_16550_UART
 
 uart_datawidth_t uart_getreg(uart_addrwidth_t base, unsigned int offset)
@@ -46,7 +57,10 @@ uart_datawidth_t uart_getreg(uart_addrwidth_t base, unsigned int offset)
 
 void uart_putreg(uart_addrwidth_t base, unsigned int offset, uart_datawidth_t value)
 {
+	 //lldbg("LL uart_putreg: 0x%x  0x%x 0x%x \n", base, offset, value );
+	 
 	putreg32(value, base + offset);
+	
 }
 
 #endif
