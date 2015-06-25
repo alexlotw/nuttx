@@ -1,4 +1,4 @@
-/**
+/*
  * Copyright (c) 2015 Google Inc.
  * All rights reserved.
  *
@@ -24,32 +24,28 @@
  * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * @author Mark Greer
  */
 
+/**
+ * @brief Ara Toshiba bridge ASIC UART test program
+ *
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <errno.h>
+
 #include <nuttx/device.h>
+#include <nuttx/device_uart.h>
 
-extern struct device_driver usb4624_driver;
-extern struct device_driver tsb_usb_hcd_driver;
-extern struct device_driver tsb_pll_driver;
-extern struct device_driver tsb_uart_driver;
-
-void tsb_driver_register(void)
+#ifdef CONFIG_BUILD_KERNEL
+int main(int argc, FAR char *argv[])
+#else
+int uart_test_main(int argc, char *argv[])
+#endif
 {
-#ifdef CONFIG_ARA_BRIDGE_HAVE_USB4624
-    device_register_driver(&usb4624_driver);
-#endif
-
-#ifdef CONFIG_ARCH_CHIP_USB_HCD
-    device_register_driver(&tsb_usb_hcd_driver);
-#endif
-
-#ifdef CONFIG_ARCH_CHIP_TSB_PLL
-    device_register_driver(&tsb_pll_driver);
-#endif
-
-#ifdef CONFIG_ARCH_CHIP_DEVICE_UART
-    device_register_driver(&tsb_uart_driver);
-#endif
+    fprintf(stderr, "uart_test_main \n");    
+    return 0;
 }

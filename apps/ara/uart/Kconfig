@@ -1,0 +1,23 @@
+#
+# For a description of the syntax of this configuration file,
+# see misc/tools/kconfig-language.txt.
+#
+
+config ARA_UART_TEST
+	bool "Ara TSB UART Device Driver Test Program"
+	default n
+	depends on ARCH_CHIP_TSB && !GREYBUS_UART_PHY
+	---help---
+		Enable Toshiba UART low-level device driver test program.
+        Note that this program does not exit.
+
+if ARA_UART_TEST
+
+config ARA_UART_TEST_PROGNAME
+	string "Program name"
+	default "uart_test"
+	---help---
+		This is the name of the program that will be use when the
+		NSH ELF program is installed.
+
+endif
