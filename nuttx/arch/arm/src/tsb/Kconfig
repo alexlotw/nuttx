@@ -95,6 +95,37 @@ config ARCH_CHIP_TSB_PLL
 	---help---
 		TSB PLL Controller Driver
 
+config ARCH_CHIP_DEVICE_I2S
+	bool
+	default n
+
+config ARCH_CHIP_TSB_I2S
+	bool "I2S Support"
+	depends on ARCH_CHIP_GPBRIDGE
+	select DEVICE_CORE
+	select LIB_RING_BUF
+	select ARCH_CHIP_TSB_PLL
+	select ARCH_CHIP_DEVICE_I2S
+	default n
+	---help---
+		TSB I2S Controller Driver
+
+config ARCH_CHIP_DEVICE_PWM
+	bool "Enable PWM at Boot"
+	depends on ARCH_CHIP_APBRIDGE || ARCH_CHIP_GPBRIDGE
+	select DEVICE_CORE
+	default n
+	---help---
+		TSB PWM controller driver
+
+config ARCH_CHIP_DEVICE_SPI
+	bool "SPI Master Support"
+	depends on ARCH_CHIP_APBRIDGE || ARCH_CHIP_GPBRIDGE
+	select DEVICE_CORE
+	default n
+	---help---
+		TSB SPI Master Driver
+
 config ARCH_CHIP_DEVICE_UART
 	bool "UART Support"
 	depends on ARCH_CHIP_APBRIDGE || ARCH_CHIP_GPBRIDGE

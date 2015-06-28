@@ -13,6 +13,11 @@ config GREYBUS_I2C_PHY
 	select I2C_TRANSFER
 	default n
 
+config GREYBUS_SPI_PHY
+	bool "SPI PHY support"
+	select DEVICE_CORE
+	default n
+
 config GREYBUS_BATTERY_PHY
 	bool "Battery support"
 	default n
@@ -29,6 +34,17 @@ config GREYBUS_VIBRATOR
 config GREYBUS_USB_HOST_PHY
 	bool "USB Host PHY support"
 	depends on ARCH_HAVE_USB_HOST
+	default n
+
+config GREYBUS_PWM_PHY
+	bool "PWM PHY support"
+	select DEVICE_CORE
+	default n
+
+config GREYBUS_I2S_PHY
+	bool "I2S PHY support"
+	select DEVICE_CORE
+	select LIB_RING_BUF
 	default n
 
 config GREYBUS_UART_PHY

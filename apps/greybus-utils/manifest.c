@@ -47,6 +47,11 @@ extern void gb_battery_register(int cport);
 extern void gb_loopback_register(int cport);
 extern void gb_vibrator_register(int cport);
 extern void gb_usb_register(int cport);
+extern void gb_pwm_register(int cport);
+extern void gb_i2s_mgmt_register(int cport);
+extern void gb_i2s_receiver_register(int cport);
+extern void gb_i2s_transmitter_register(int cport);
+extern void gb_spi_register(int cport);
 extern void gb_uart_register(int cport);
 
 struct greybus {
@@ -153,6 +158,34 @@ void enable_cports(void)
             gb_usb_register(id);
         }
 #endif
+
+#ifdef CONFIG_GREYBUS_PWM_PHY
+        if (protocol == GREYBUS_PROTOCOL_PWM) {
+            gb_info("Registering PWM greybus driver.\n");
+            gb_pwm_register(id);
+        }
+#endif
+
+#ifdef CONFIG_GREYBUS_I2S_PHY
+        if (protocol == GREYBUS_PROTOCOL_I2S_MGMT) {
+            gb_info("Registering I2S MGMT greybus driver.\n");
+            gb_i2s_mgmt_register(id);
+        } else if (protocol == GREYBUS_PROTOCOL_I2S_RECEIVER) {
+            gb_info("Registering I2S RECEIVER greybus driver.\n");
+            gb_i2s_receiver_register(id);
+        } else if (protocol == GREYBUS_PROTOCOL_I2S_TRANSMITTER) {
+            gb_info("Registering I2S TRANSMITTER greybus driver.\n");
+            gb_i2s_transmitter_register(id);
+        }
+#endif
+
+#ifdef CONFIG_GREYBUS_SPI_PHY
+        if (protocol == GREYBUS_PROTOCOL_SPI) {
+            gb_info("Registering SPI greybus driver.\n");
+            gb_spi_register(id);
+        }
+#endif
+
 #ifdef CONFIG_GREYBUS_UART_PHY
             if (protocol == GREYBUS_PROTOCOL_UART) {
                 gb_info("Registering Uart greybus driver. id= %d\n", id);
@@ -330,9 +363,9 @@ static int get_interface_id(char *fname)
     return iid;
 }
 
-void *get_manifest_blob(void *data)
+void *get_manifest_blob(void)
 {
-    return data ? data : manifest_files[0].bin;
+    return manifest_files[0].bin;
 }
 
 void parse_manifest_blob(void *manifest)
@@ -353,7 +386,7 @@ void enable_manifest(char *name, void *priv, int device_id)
 {
     void *manifest;
 
-    manifest = get_manifest_blob(priv);
+    manifest = get_manifest_blob();
     if (manifest) {
         g_device_id = device_id;
         parse_manifest_blob(manifest);
@@ -375,7 +408,7 @@ struct list_head *get_manifest_cports(void)
 
 int get_manifest_size(void)
 {
-    struct greybus_manifest_header *mh = get_manifest_blob(NULL);
+    struct greybus_manifest_header *mh = get_manifest_blob();
 
     return mh ? le16_to_cpu(mh->size) : 0;
 }

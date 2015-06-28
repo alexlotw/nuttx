@@ -21,7 +21,7 @@ USAGE="
 USAGE:
     (1) rebuild specific image config
         ${0} [-j N] <board-name> <config-name>
-    (2) rebuild all image configs under configs/ara|bdb|endo
+    (2) rebuild all image configs under configs/ara
         ${0} [-j N] all
 
 Options:
@@ -132,6 +132,7 @@ build_image_from_defconfig() {
   cp ${ARA_BUILD_TOPDIR}/nuttx/setenv.sh  ${ARA_BUILD_CONFIG_PATH}/setenv.sh > /dev/null 2>&1
 
   echo -n "Building '$buildname'" ...
+  export ARA_BUILD_NAME=$buildname
   pushd $ARA_BUILD_TOPDIR/nuttx > /dev/null
   make  -j ${ARA_BUILD_PARALLEL} --always-make -r -f Makefile.unix  2>&1 | tee $ARA_BUILD_TOPDIR/build.log
 
@@ -172,11 +173,7 @@ buildbase="`( cd \"$TOPDIR/..\" && pwd )`/build"
 
 if [ $buildall -eq 1 ] ; then
   # build list of defconfigs
-  defconfig_list=$(find $TOPDIR/configs/bdb -iname defconfig)
-  defconfig_list+=" "
-  defconfig_list+=$(find $TOPDIR/configs/ara  -iname defconfig)
-  defconfig_list+=" "
-  defconfig_list+=$(find $TOPDIR/configs/endo  -iname defconfig)
+  defconfig_list=$(find $TOPDIR/configs/ara  -iname defconfig)
   # process list of defconfigs
   for cfg in $defconfig_list; do
     # save full path to defconfig
