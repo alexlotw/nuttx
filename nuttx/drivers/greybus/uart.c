@@ -418,7 +418,7 @@ static void *uart_rx_thread(void *data)
         }
 
         node = get_node_from(&info->data_queue);
-        if (!node) {
+        if (node) {
             ret = gb_operation_send_request(node->operation, NULL, false);
             if (ret) {
                 uart_report_error(GB_UART_EVENT_PROTOCOL_ERROR, __func__);

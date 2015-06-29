@@ -51,16 +51,8 @@ struct tsb_uart_info {
     uint32_t        reg_base;
     /** IRQ number */
     int             uart_irq;
-    /** baud rate setting */
-    uint32_t        baud;
-    /** parity setting */
-    uint8_t         parity;
-    /** data bit setting */
-    uint8_t         bits;
-    /** stop bit setting */
-    uint8_t         stopbits;
-    /** Flow control setting */
-    uint8_t         flow;
+    /** Keeping FCR value, FCR is write-only register. */
+    uint8_t         fcr;
     /** Transmit buffer structure */
     struct uart_buffer xmit;
     /** Receive buffer structure */
@@ -150,7 +142,7 @@ static void dump_regs(uint32_t base)
     ua_reg_bit_set(base, UA_LCR, UA_DLAB);
     lldbg("DLL reg: 0x%08p\n", ua_getreg(base, UA_RBR_THR_DLL));
     lldbg("DLH reg: 0x%08p\n", ua_getreg(base, UA_IER_DLH));
-    ua_reg_bit_set(base, UA_LCR, UA_DLAB);
+    ua_reg_bit_clr(base, UA_LCR, UA_DLAB);
     /* interrupts enable */
     lldbg("IRE reg: 0x%08p\n", ua_getreg(base, UA_IER_DLH));
     /* interrupt id */
@@ -181,7 +173,7 @@ static void ua_set_divisor(uint32_t base, uint8_t divisor)
     ua_putreg(base, UA_RBR_THR_DLL, divisor & 0xff);
     ua_putreg(base, UA_IER_DLH, (divisor >> 8) & 0xff);
     /* Clear DLAB */
-    ua_reg_bit_set(base, UA_LCR, UA_DLAB);
+    ua_reg_bit_clr(base, UA_LCR, UA_DLAB);
 }
 
 /**
@@ -193,48 +185,6 @@ static void ua_set_divisor(uint32_t base, uint8_t divisor)
 static uint8_t ua_get_interrupt_id(uint32_t base)
 {
     return (ua_getreg(base, UA_FCR_IIR) & UA_INTERRUPT_ID_MASK);
-}
-
-/**
- * @brief Set data bits setting.
- *
- * @param base The UART register base address.
- * @param databits The data bits to be set.
- * @return None.
- */
-static void ua_set_data_bits(uint32_t base, uint8_t databits)
-{
-    uint8_t lcr = ua_getreg(base, UA_LCR);
-    lcr &= ~UA_DLS_MASK;
-    lcr |= databits;
-    ua_putreg(base, UA_LCR, lcr);
-}
-
-/**
- * @brief Set stop bits setting.
- *
- * @param base The UART register base address.
- * @param stopbit The stop bits to be set.
- * @return None.
- */
-static void ua_set_stop_bit(uint32_t base, uint8_t stopbit)
-{
-    ua_reg_bit_set(base, UA_LCR, UA_LCR_STOP);
-}
-
-/**
- * @brief Set parity bits setting.
- *
- * @param base The UART register base address.
- * @param paritybits The parity bits to be set.
- * @return None.
- */
-static void ua_set_parity_bits(uint32_t base, uint8_t paritybits)
-{
-    uint8_t lcr = ua_getreg(base, UA_LCR);
-    lcr &= ~(UA_LCR_PEN|UA_LCR_EPS);
-    lcr |= paritybits;
-    ua_putreg(base, UA_LCR, lcr);
 }
 
 /**
@@ -433,16 +383,19 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
     uart_info = dev->private;
 
     /* TX and RX FIFO reset */
+    uart_info->fcr = 0;
+
+    /* Clean all FIFO setting */
     ua_putreg(uart_info->reg_base,
               UA_FCR_IIR, UA_TX_FIFO_RESET | UA_RX_FIFO_RESET);
 
     /* Set TX and RX FIFO to 1/2 */
-    ua_putreg(uart_info->reg_base, UA_FCR_IIR,
-              UA_RX_FIFO_TRIGGER_1_2 << UA_RX_FIF0_TRIGGER_SHIFT |
-              UA_TX_FIFO_TRIGGER_1_2 << UA_TX_FIF0_TRIGGER_SHIFT);
+    uart_info->fcr = UA_RX_FIFO_TRIGGER_1_2 << UA_RX_FIF0_TRIGGER_SHIFT |
+                     UA_TX_FIFO_TRIGGER_1_2 << UA_TX_FIF0_TRIGGER_SHIFT;
+    ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
 
     /* Set data bits */
-    lcr = 0;
+    lcr = 0;    /* stopbit setting depend on databit */
     switch (databits) {
     case 5:
         lcr = UA_DLS_5_BITS;
@@ -453,15 +406,35 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
     case 7 :
         lcr = UA_DLS_7_BITS;
         break;
-    default:
     case 8 :
         lcr = UA_DLS_8_BITS;
         break;
+    default:
+        return -EINVAL;
     }
-    ua_set_data_bits(uart_info->reg_base, lcr);
+    ua_reg_bit_clr(uart_info->reg_base, UA_LCR, UA_DLS_MASK);
+    ua_reg_bit_set(uart_info->reg_base, UA_LCR, lcr);
 
     /* Set stop bit */
-    ua_set_stop_bit(uart_info->reg_base, stopbit);
+    switch (stopbit) {
+    case ONE_STOP_BIT:
+        ua_reg_bit_clr(uart_info->reg_base, UA_LCR, UA_LCR_STOP);
+        break;
+    case ONE5_STOP_BITS:
+        if (lcr != UA_DLS_5_BITS) {
+            return -EINVAL;
+        }
+        ua_reg_bit_set(uart_info->reg_base, UA_LCR, UA_LCR_STOP);
+        break;
+    case TWO_STOP_BITS:
+        if (lcr == UA_DLS_5_BITS) {
+            return -EINVAL;
+        }
+        ua_reg_bit_set(uart_info->reg_base, UA_LCR, UA_LCR_STOP);
+        break;
+    default:
+        return -EINVAL;
+    }
 
     /* Set parity setting */
     lcr = 0;
@@ -470,14 +443,16 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
     } else if (parity == EVEN_PARITY) {
         lcr |= (UA_LCR_PEN|UA_LCR_EPS);
     }
-    ua_set_parity_bits(uart_info->reg_base, lcr);
+    ua_reg_bit_clr(uart_info->reg_base, UA_LCR, (UA_LCR_PEN|UA_LCR_EPS));
+    ua_reg_bit_set(uart_info->reg_base, UA_LCR, lcr);
 
     /* set baud rate divisor */
     divisor = (48000000 >> 4) / baud;
     ua_set_divisor(uart_info->reg_base, divisor);
 
     /* Enable TX and RX FIFO */
-    ua_putreg(uart_info->reg_base, UA_FCR_IIR, UA_FIFO_ENABLE);
+    uart_info->fcr |= UA_FIFO_ENABLE;
+    ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
     /* Programmable THRE interrupt mode enalbe */
     ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_PTIME);
 
@@ -762,7 +737,9 @@ static int tsb_uart_stop_transmitter(struct device *dev)
 
     /* Disable transmit interrupt. */
     ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ETBEI);
-    ua_putreg(uart_info->reg_base, UA_FCR_IIR, UA_TX_FIFO_RESET);
+    uart_info->fcr |= UA_TX_FIFO_RESET;
+    ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
+    uart_info->fcr &= ~UA_TX_FIFO_RESET;
 
     irqrestore(flags);
 
@@ -858,7 +835,9 @@ static int tsb_uart_stop_receiver(struct device *dev)
 
     /* Disable receive interrupt. */
     ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
-    ua_putreg(uart_info->reg_base, UA_FCR_IIR, UA_RX_FIFO_RESET);
+    uart_info->fcr |= UA_RX_FIFO_RESET;
+    ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
+    uart_info->fcr &= ~UA_RX_FIFO_RESET;
 
     irqrestore(flags);
 
@@ -931,6 +910,10 @@ static void tsb_uart_dev_close(struct device *dev)
         tsb_uart_stop_receiver(dev);
     }
 
+    sem_destroy(&uart_info->rx_sem);
+
+    sem_destroy(&uart_info->tx_sem);
+
     uart_info->flags = 0;
 
 err_irqrestore:
@@ -971,14 +954,14 @@ static int tsb_uart_dev_probe(struct device *dev)
 
     ret = sem_init(&uart_info->rx_sem, 0, 0);
     if (ret) {
-        goto err_free_info;
+        goto err_destroy_tx_sem;
     }
 
     flags = irqsave();
 
     ret = irq_attach(uart_info->uart_irq, uart_irq_handler);
-    if (!ret) {
-        goto err_free_info;
+    if (ret) {
+        goto err_destroy_rx_sem;
     }
 
     /* Disable all interrupts */
@@ -996,7 +979,11 @@ static int tsb_uart_dev_probe(struct device *dev)
 
     return ret;
 
-    irq_detach(uart_info->uart_irq);
+err_destroy_rx_sem:
+    irqrestore(flags);
+    sem_destroy(&uart_info->rx_sem);
+err_destroy_tx_sem:
+    sem_destroy(&uart_info->tx_sem);
 err_free_info:
     free(uart_info);
 
