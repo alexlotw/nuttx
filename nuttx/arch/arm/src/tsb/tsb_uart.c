@@ -39,6 +39,8 @@
 #include "tsb_scm.h"
 #include "tsb_uart.h"
 
+#define UART_CLOCK  48000000
+
 /**
  * struct tsb_uart_info - the driver internal information.
  */
@@ -131,7 +133,7 @@ static void ua_reg_bit_clr(uint32_t reg, uint32_t offset, uint8_t bitmask)
 
 #ifdef DEBUG_ON
 /**
- * @brief Put value to register.
+ * @brief Dump UART registers value.
  *
  * @param base The UART register base address.
  * @return None.
@@ -245,6 +247,10 @@ static void ua_xmitchars(struct tsb_uart_info *uart_info)
  * This function get the character from FIFO to buffer until the buffer is full
  * or FIFO is empty. If buffer is full, it calls the up layer callback function.
  *
+ * tsb_uart_start_receiver() get one buffer from protocol, it pass the buffer
+ * information to uart_info and enable the RX interrupt. When there is data in
+ * FIFO, this function is called by interrupt handler for processing data.
+ *
  * @param uart_info The UART driver info structure.
  * @param int_id The interrupt ID from register.
  * @return None.
@@ -254,7 +260,18 @@ static void ua_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
     while (!ua_is_rx_fifo_empty(uart_info->reg_base)) {
         uart_info->recv.buffer[uart_info->recv.head++] =
                         ua_getreg(uart_info->reg_base, UA_RBR_THR_DLL);
-
+        /*
+         * Two conditions will pause receiving and return to caller.
+         * 1. When given buffer is full, caller should prepare another buffer.
+         * 2. When receiving time out, it returns for the short data, for
+         *    instance, the OK response for modem. The time out is 4 characters
+         *    interval by hardware design.
+         * The FIFO still keeps data and receiving until FIFO get full, in auto
+         * flow control mode, UART controller will clean RTS to stop peer or the
+         * caller can use next tsb_uart_start_receiver() to continue data
+         * receiving by enalbing interrupt.
+         * It never clean the FIFO. Only stop_receiver() will clean the FIFO.
+         */
         if (uart_info->recv.head == uart_info->recv.tail ||
             int_id == UA_INTERRUPT_ID_TO) {
             /* Disable receive interrupt */
@@ -447,13 +464,13 @@ static int tsb_uart_set_configuration(struct device *dev, int baud, int parity,
 
     /* set baud rate divisor */
     /* baud rate = serial clock freq / (16 * divider) */
-    divisor = (48000000 >> 4) / baud;
+    divisor = (UART_CLOCK >> 4) / baud;
     ua_set_divisor(uart_info->reg_base, divisor);
 
     /* Enable TX and RX FIFO */
     uart_info->fcr |= UA_FIFO_ENABLE;
     ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
-    /* Programmable THRE interrupt mode enalbe */
+    /* Programmable THRE interrupt mode enable */
     ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_PTIME);
 
     /* Set auto flow control */
@@ -697,7 +714,7 @@ static int tsb_uart_start_transmitter(struct device *dev, uint8_t *buffer,
     uart_info->xmit.size = length;
     uart_info->tx_callback = callback;
 
-    /* Enalbe transmit interrupt */
+    /* Enable transmit interrupt */
     ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_ETBEI);
 
     if (!uart_info->tx_callback) {
@@ -738,6 +755,7 @@ static int tsb_uart_stop_transmitter(struct device *dev)
 
     /* Disable transmit interrupt. */
     ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ETBEI);
+    /* Clean FIFO */
     uart_info->fcr |= UA_TX_FIFO_RESET;
     ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
     uart_info->fcr &= ~UA_TX_FIFO_RESET;
@@ -795,7 +813,7 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
     uart_info->recv.size = length;
     uart_info->rx_callback = callback;
 
-    /* Enalbe receive interrupt */
+    /* Enable receive interrupt */
     ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
 
     if (!uart_info->rx_callback) {
@@ -836,6 +854,7 @@ static int tsb_uart_stop_receiver(struct device *dev)
 
     /* Disable receive interrupt. */
     ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
+    /* Clean FIFO */
     uart_info->fcr |= UA_RX_FIFO_RESET;
     ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
     uart_info->fcr &= ~UA_RX_FIFO_RESET;
@@ -1055,7 +1074,7 @@ int uart_init(int baud)
      * register writes will work. Try this a few times.
      */
     /* baud rate = serial clock freq / (16 * divider) */
-    divisor = (48000000 >> 4) / baud;
+    divisor = (UART_CLOCK >> 4) / baud;
     for (i = 0; i < 3; i++) {
         ua_set_divisor(UART_BASE, divisor);
 
