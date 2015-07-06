@@ -53,6 +53,10 @@ struct tsb_uart_info {
     uint32_t        reg_base;
     /** IRQ number */
     int             uart_irq;
+    /** The last line status */
+    uint32_t line_status;
+    /** The remaining data in FIFO */
+    uint32_t surplus;
     /** Keeping FCR value, FCR is write-only register. */
     uint8_t         fcr;
     /** Transmit buffer structure */
@@ -257,15 +261,26 @@ static void ua_xmitchars(struct tsb_uart_info *uart_info)
  */
 static void ua_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
 {
-    while (!ua_is_rx_fifo_empty(uart_info->reg_base)) {
+    uint32_t line_err = ua_getreg(uart_info->reg_base, UA_LSR); 
+    uint32_t num_data = ua_getreg(uart_info->reg_base, UA_RFL); 
+
+    uart_info->line_status = line_err;
+    line_err &= (UA_LSR_OE | UA_LSR_PE | UA_LSR_FE | UA_LSR_BI);
+
+    if (uart_info->surplus != 0) {
+        num_data = uart_info->surplus;
+    }
+
+    while (num_data--) {
         uart_info->recv.buffer[uart_info->recv.head++] =
                         ua_getreg(uart_info->reg_base, UA_RBR_THR_DLL);
         /*
-         * Two conditions will pause receiving and return to caller.
+         * Three conditions will pause receiving and return to caller.
          * 1. When given buffer is full, caller should prepare another buffer.
          * 2. When receiving time out, it returns for the short data, for
          *    instance, the OK response for modem. The time out is 4 characters
          *    interval by hardware design.
+         * 3. Line errors.
          * The FIFO still keeps data and receiving until FIFO get full, in auto
          * flow control mode, UART controller will clean RTS to stop peer or the
          * caller can use next tsb_uart_start_receiver() to continue data
@@ -273,14 +288,16 @@ static void ua_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
          * It never clean the FIFO. Only stop_receiver() will clean the FIFO.
          */
         if (uart_info->recv.head == uart_info->recv.tail ||
-            int_id == UA_INTERRUPT_ID_TO) {
+            int_id == UA_INTERRUPT_ID_TO || line_err) {
             /* Disable receive interrupt */
             ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
+            /* keep data in FIFO for next receive start */
+            uart_info->surplus = num_data; 
 
             if (uart_info->rx_callback) {
                 uart_info->flags &= ~TSB_UART_FLAG_RECV;
                 uart_info->rx_callback(uart_info->recv.buffer,
-                                       uart_info->recv.head, 0);
+                                       uart_info->recv.head, line_err);
             }
             else {
                 sem_post(&uart_info->rx_sem);
@@ -319,17 +336,14 @@ static int ua_irq_handler(int irq, void *context)
             }
             break;
         case UA_INTERRUPT_ID_LS:
-            status = ua_getreg(uart_info->reg_base, UA_LSR);
-            if (uart_info->ls_callback) {
-                uart_info->ls_callback(status);
-            }
-            break;
-        case UA_INTERRUPT_ID_TX:
-            ua_xmitchars(uart_info);
-            break;
         case UA_INTERRUPT_ID_TO:
         case UA_INTERRUPT_ID_RX:
             ua_recvchars(uart_info, interrupt_id);
+            if (interrupt_id == UA_INTERRUPT_ID_LS && uart_info->ls_callback) {
+                uart_info->ls_callback(uart_info->line_status);
+            }
+        case UA_INTERRUPT_ID_TX:
+            ua_xmitchars(uart_info);
             break;
         }
     }
