@@ -53,10 +53,8 @@ struct tsb_uart_info {
     uint32_t        reg_base;
     /** IRQ number */
     int             uart_irq;
-    /** The last line status */
-    uint32_t line_status;
-    /** The remaining data in FIFO */
-    uint32_t surplus;
+    /** The last line errors */
+    uint32_t        line_err;
     /** Keeping FCR value, FCR is write-only register. */
     uint8_t         fcr;
     /** Transmit buffer structure */
@@ -261,17 +259,7 @@ static void ua_xmitchars(struct tsb_uart_info *uart_info)
  */
 static void ua_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
 {
-    uint32_t line_err = ua_getreg(uart_info->reg_base, UA_LSR); 
-    uint32_t num_data = ua_getreg(uart_info->reg_base, UA_RFL); 
-
-    uart_info->line_status = line_err;
-    line_err &= (UA_LSR_OE | UA_LSR_PE | UA_LSR_FE | UA_LSR_BI);
-
-    if (uart_info->surplus != 0) {
-        num_data = uart_info->surplus;
-    }
-
-    while (num_data--) {
+    while (!ua_is_rx_fifo_empty(uart_info->reg_base)) {
         uart_info->recv.buffer[uart_info->recv.head++] =
                         ua_getreg(uart_info->reg_base, UA_RBR_THR_DLL);
         /*
@@ -280,7 +268,7 @@ static void ua_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
          * 2. When receiving time out, it returns for the short data, for
          *    instance, the OK response for modem. The time out is 4 characters
          *    interval by hardware design.
-         * 3. Line errors.
+         * 3. Line err such as overrun, frame, parity and break;
          * The FIFO still keeps data and receiving until FIFO get full, in auto
          * flow control mode, UART controller will clean RTS to stop peer or the
          * caller can use next tsb_uart_start_receiver() to continue data
@@ -288,16 +276,16 @@ static void ua_recvchars(struct tsb_uart_info *uart_info, uint8_t int_id)
          * It never clean the FIFO. Only stop_receiver() will clean the FIFO.
          */
         if (uart_info->recv.head == uart_info->recv.tail ||
-            int_id == UA_INTERRUPT_ID_TO || line_err) {
+            int_id == UA_INTERRUPT_ID_TO || uart_info->line_err) {
             /* Disable receive interrupt */
-            ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
-            /* keep data in FIFO for next receive start */
-            uart_info->surplus = num_data; 
+            ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH,
+                           UA_IER_ERBFI | UA_IER_ELSI);
 
             if (uart_info->rx_callback) {
                 uart_info->flags &= ~TSB_UART_FLAG_RECV;
                 uart_info->rx_callback(uart_info->recv.buffer,
-                                       uart_info->recv.head, line_err);
+                                       uart_info->recv.head,
+                                       uart_info->line_err);
             }
             else {
                 sem_post(&uart_info->rx_sem);
@@ -336,14 +324,19 @@ static int ua_irq_handler(int irq, void *context)
             }
             break;
         case UA_INTERRUPT_ID_LS:
+            status = ua_getreg(uart_info->reg_base, UA_LSR);
+            uart_info->line_err = status & (UA_LSR_OE | UA_LSR_PE | UA_LSR_FE |
+                                            UA_LSR_BI);
+            if (uart_info->ls_callback) {
+                uart_info->ls_callback(status);
+            }
+            break;
+        case UA_INTERRUPT_ID_TX:
+            ua_xmitchars(uart_info);
+            break;
         case UA_INTERRUPT_ID_TO:
         case UA_INTERRUPT_ID_RX:
             ua_recvchars(uart_info, interrupt_id);
-            if (interrupt_id == UA_INTERRUPT_ID_LS && uart_info->ls_callback) {
-                uart_info->ls_callback(uart_info->line_status);
-            }
-        case UA_INTERRUPT_ID_TX:
-            ua_xmitchars(uart_info);
             break;
         }
     }
@@ -588,7 +581,13 @@ static int tsb_uart_get_line_status(struct device *dev, uint8_t *line_status)
 
     uart_info = dev->private;
 
-    *line_status = ua_getreg(uart_info->reg_base, UA_LSR);
+    /*
+     * UART_LSR is read & clean register, so this funtion return saved value
+     * to user, and only the error bits. The FIFO operation bits only for
+     * driver internal use.
+     */
+    *line_status = uart_info->line_err;
+    uart_info->line_err = 0;
 
     return 0;
 }
@@ -675,16 +674,8 @@ static int tsb_uart_attach_ls_callback(struct device *dev,
 
     uart_info = dev->private;
 
-    if (callback == NULL) {
-        /* Disable line status interrupt. */
-        ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ELSI);
-        uart_info->ls_callback = NULL;
-        return 0;
-    }
-
-    /* Enable line status interrupt. */
-    ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_ELSI);
     uart_info->ls_callback = callback;
+
     return 0;
 }
 
@@ -826,9 +817,10 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
     uart_info->recv.tail = length;
     uart_info->recv.size = length;
     uart_info->rx_callback = callback;
-
+    uart_info->line_err = 0;
+    
     /* Enable receive interrupt */
-    ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
+    ua_reg_bit_set(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI | UA_IER_ELSI);
 
     if (!uart_info->rx_callback) {
         sem_wait(&uart_info->rx_sem);
@@ -867,7 +859,7 @@ static int tsb_uart_stop_receiver(struct device *dev)
     flags = irqsave();
 
     /* Disable receive interrupt. */
-    ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI);
+    ua_reg_bit_clr(uart_info->reg_base, UA_IER_DLH, UA_IER_ERBFI | UA_IER_ELSI);
     /* Clean FIFO */
     uart_info->fcr |= UA_RX_FIFO_RESET;
     ua_putreg(uart_info->reg_base, UA_FCR_IIR, uart_info->fcr);
@@ -878,7 +870,7 @@ static int tsb_uart_stop_receiver(struct device *dev)
     if (uart_info->rx_callback) {
         uart_info->flags &= ~TSB_UART_FLAG_RECV;
         uart_info->rx_callback(uart_info->recv.buffer,
-                               uart_info->recv.head, 0);
+                               uart_info->recv.head, uart_info->line_err);
     } else {
         sem_post(&uart_info->rx_sem);
     }
