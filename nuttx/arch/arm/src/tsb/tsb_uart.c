@@ -825,7 +825,7 @@ static int tsb_uart_start_receiver(struct device *dev, uint8_t *buffer,
     if (!uart_info->rx_callback) {
         sem_wait(&uart_info->rx_sem);
         if (got) {
-            *got = uart_info->xmit.head;
+            *got = uart_info->recv.head;
         }
         uart_info->flags &= ~TSB_UART_FLAG_RECV;
     }
