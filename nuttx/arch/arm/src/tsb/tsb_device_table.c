@@ -37,6 +37,7 @@
 #include <nuttx/device_pwm.h>
 #include <nuttx/device_spi.h>
 #include <nuttx/device_uart.h>
+#include <nuttx/device_sdio.h>
 #include <nuttx/usb.h>
 
 #include <arch/irq.h>
@@ -168,6 +169,17 @@ static struct device_resource tsb_uart_resources[] = {
 };
 #endif
 
+#ifdef CONFIG_ARCH_CHIP_DEVICE_SDIO
+static struct device_resource tsb_sdio_resources[] = {
+    {
+        .name = "sdio_reg_base",
+        .type = DEVICE_RESOURCE_TYPE_REGS,
+        .start = UHSSD_BASE,
+        .count = UHSSD_SIZE,
+    },
+};
+#endif
+
 static struct device tsb_device_table[] = {
 #ifdef CONFIG_ARCH_CHIP_DEVICE_PLL
     {
@@ -236,6 +248,17 @@ static struct device tsb_device_table[] = {
         .id             = 0,
         .resources      = tsb_uart_resources,
         .resource_count = ARRAY_SIZE(tsb_uart_resources),
+    },
+#endif
+
+#ifdef CONFIG_ARCH_CHIP_DEVICE_SDIO
+    {
+        .type = DEVICE_TYPE_SDIO_HW,
+        .name = "tsb_sdio",
+        .desc = "TSB SDIO Controller",
+        .id = 0,
+        .resources = tsb_sdio_resources,
+        .resource_count = ARRAY_SIZE(tsb_sdio_resources),
     },
 #endif
 };
