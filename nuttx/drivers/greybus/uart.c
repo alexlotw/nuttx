@@ -297,7 +297,8 @@ static void uart_rx_callback(uint8_t *buffer, int length, int error)
 
     *info->rx_node->data_size = cpu_to_le16(length);
     put_node_back(&info->data_queue, info->rx_node);
-
+    sem_post(&info->rx_sem);
+    
     node = get_node_from(&info->free_queue);
     if (!node) {
         /*
@@ -314,8 +315,6 @@ static void uart_rx_callback(uint8_t *buffer, int length, int error)
     if (ret) {
         uart_report_error(GB_UART_EVENT_PROTOCOL_ERROR, __func__);
     }
-
-    sem_post(&info->rx_sem);
 }
 
 /**

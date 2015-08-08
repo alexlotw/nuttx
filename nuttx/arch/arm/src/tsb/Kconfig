@@ -105,6 +105,12 @@ config ARCH_CHIP_DEVICE_UART
 	---help---
 		TSB UART Driver
 
+config ARCH_CHIP_DEVICE_SDIO
+	bool "SDIO Support"
+	select DEVICE_CORE
+	---help---
+		TSB SDIO Driver
+
 endchoice
 
 choice

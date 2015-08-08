@@ -78,3 +78,8 @@ config GREYBUS_UART_PHY
 	bool "UART PHY support"
 	select DEVICE_CORE
 	default n
+
+config GREYBUS_SDIO_PHY
+	bool "SDIO PHY support"
+	select DEVICE_CORE
+	default n
