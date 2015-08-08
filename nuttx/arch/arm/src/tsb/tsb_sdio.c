@@ -62,7 +62,14 @@ static struct device *sdio_dev = NULL;
  */
 static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
 {
-    /* TODO implement the function body */
+    /* TODO Implement body of the function */
+
+    /* temporary test data */
+    cap->caps = 0x00080000;
+    cap->ocr = 0x00000800;
+    cap->max_blk_count = 1;
+    cap->max_blk_size = 512;
+
     return 0;
 }
 
@@ -75,7 +82,7 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
  */
 static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
 {
-    /* TODO implement the function body */
+    /* TODO Implement body of the function */
     return 0;
 }
 
@@ -88,7 +95,15 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
  */
 static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 {
-    /* TODO implement the function body */
+    uint32_t *resp = cmd->resp;
+    /* TODO Implement body of the function */
+
+    /* temporary test data */
+    resp[0] = 0x15;
+    resp[1] = 0x0;
+    resp[2] = 0x0;
+    resp[3] = 0x0;
+
     return 0;
 }
 
@@ -101,7 +116,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
  */
 static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
 {
-    /* TODO implement the function body */
+    /* TODO Implement body of the function */
     return 0;
 }
 
@@ -114,7 +129,7 @@ static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
  */
 static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
 {
-    /* TODO implement the function body */
+    /* TODO Implement body of the function */
     return 0;
 }
 
