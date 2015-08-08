@@ -36,7 +36,8 @@
 #include <nuttx/device.h>
 #include <nuttx/device_sdio.h>
 
-#define TSB_SDIO_FLAG_OPEN BIT(0)
+#define SDIO_FLAG_PROBE     BIT(0)
+#define SDIO_FLAG_OPEN      BIT(1)
 
 /**
  * @brief SDIO device private information
@@ -45,7 +46,7 @@ struct tsb_sdio_info {
     /** device driver handler */
     struct device   *dev;
     /** host controller state */
-    uint32_t state;
+    uint32_t flags;
     /** event callback function */
     sdio_event_callback callback;
 };
@@ -59,9 +60,10 @@ static struct device *sdio_dev = NULL;
  * @param cap Pointer to structure of capabilities.
  * @return 0 on success, negative errno on error.
  */
-int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
+static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
 {
-    
+    /* TODO implement the function body */
+    return 0;
 }
 
 /**
@@ -71,9 +73,10 @@ int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
  * @param ios Pointer to structure of ios.
  * @return 0 on success, negative errno on error.
  */
-int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
+static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
 {
-    
+    /* TODO implement the function body */
+    return 0;
 }
 
 /**
@@ -83,9 +86,10 @@ int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
  * @param cmd Pointer to structure of cmd.
  * @return 0 on success, negative errno on error.
  */
-int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
+static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 {
-    
+    /* TODO implement the function body */
+    return 0;
 }
 
 /**
@@ -95,9 +99,10 @@ int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
  * @param transfer Pointer to structure of transfer.
  * @return 0 on success, negative errno on error.
  */
-int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
+static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
 {
-    
+    /* TODO implement the function body */
+    return 0;
 }
 
 /**
@@ -107,9 +112,10 @@ int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
  * @param transfer Pointer to structure of transfer.
  * @return 0 on success, negative errno on error.
  */
-int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
+static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
 {
-    
+    /* TODO implement the function body */
+    return 0;
 }
 
 /**
@@ -119,9 +125,18 @@ int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
  * @param callback Pointer to event callback function.
  * @return 0 on success, negative errno on error.
  */
-int tsb_sdio_attach_callback(struct device *dev, sdio_event_callback callback)
+static int tsb_sdio_attach_callback(struct device *dev,
+                                    sdio_event_callback callback)
 {
-    
+    struct tsb_sdio_info *info;
+
+    if (!dev || !dev->private) {
+        return -EINVAL;
+    }
+    info = dev->private;
+
+    info->callback = callback;
+    return 0;
 }
 
 /**
@@ -138,7 +153,23 @@ int tsb_sdio_attach_callback(struct device *dev, sdio_event_callback callback)
 */
 static int tsb_sdio_dev_open(struct device *dev)
 {
-    
+    struct tsb_sdio_info *info = dev->private;
+    irqstate_t flags;
+    int ret = 0;
+
+    flags = irqsave();
+
+    if (info->flags & SDIO_FLAG_OPEN) {
+        ret = -EBUSY;
+        goto err_irqrestore;
+    }
+
+    info->flags = SDIO_FLAG_OPEN;
+
+err_irqrestore:
+    irqrestore(flags);
+
+    return ret;
 }
 
 /**
@@ -152,7 +183,14 @@ static int tsb_sdio_dev_open(struct device *dev)
 */
 static void tsb_sdio_dev_close(struct device *dev)
 {
-    
+    struct tsb_sdio_info *info = dev->private;
+    irqstate_t flags;
+
+    flags = irqsave();
+
+    info->flags = 0;
+
+    irqrestore(flags);
 }
 
 /**
@@ -168,7 +206,23 @@ static void tsb_sdio_dev_close(struct device *dev)
 */
 static int tsb_sdio_dev_probe(struct device *dev)
 {
-    
+    struct tsb_sdio_info *info;
+
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    info = zalloc(sizeof(info));
+    if (!info) {
+        return -ENOMEM;
+    }
+
+    sdio_dev = dev;
+    info->dev = dev;
+    info->flags = SDIO_FLAG_PROBE;
+    dev->private = info;
+
+    return 0;
 }
 
 /**
@@ -183,7 +237,19 @@ static int tsb_sdio_dev_probe(struct device *dev)
 */
 static void tsb_sdio_dev_remove(struct device *dev)
 {
-    
+    struct tsb_sdio_info *info;
+
+    if (!dev || !dev->private) {
+        return;
+    }
+    info = dev->private;
+
+    if (info->flags & SDIO_FLAG_OPEN) {
+        tsb_sdio_dev_close(dev);
+    }
+    info->flags = 0;
+
+    free(info);
 }
 
 static struct device_sdio_type_ops tsb_sdio_type_ops = {

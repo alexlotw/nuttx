@@ -29,10 +29,13 @@
 #ifndef __ARCH_ARM_DEVICE_SDIO_H
 #define __ARCH_ARM_DEVICE_SDIO_H
 
-#include <errno.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <assert.h>
+
 #include <nuttx/util.h>
 #include <nuttx/device.h>
-#include <stdbool.h>
+#include <nuttx/greybus/types.h>
 
 #define DEVICE_TYPE_SDIO_HW "sdio"
 
@@ -49,13 +52,13 @@ typedef void (*sdio_event_callback)(uint8_t event);
  */
 struct sdio_cap {
     /** Capabilities Bit Masks */
-    uint32_t *caps;
+    uint32_t caps;
     /** Voltage Range Bit Mask */
-    uint32_t *ocr;
+    uint32_t ocr;
     /** Maximum Number of blocks per data command transfer */
-    uint16_t *max_blk_count;
+    uint16_t max_blk_count;
     /** Maximum size of each block to transfer */
-    uint16_t *max_blk_size;
+    uint16_t max_blk_size;
 };
 
 /**
@@ -91,7 +94,7 @@ struct sdio_cmd {
     /** SDIO Command Type */
     uint8_t  cmd_type;
     /** SDIO command arguments, as specified by SD Association */
-    uint32_t arg;
+    uint32_t cmd_arg;
     /** SDIO command response */
     uint32_t *resp;
 };

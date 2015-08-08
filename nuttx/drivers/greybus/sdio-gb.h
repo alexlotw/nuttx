@@ -52,7 +52,7 @@ struct gb_sdio_proto_version_response {
     __u8    major;
     /** SDIO Protocol minor version */
     __u8    minor;
-};
+} __packed;
 
 /**
  * SDIO Get Capabilities Response
@@ -136,6 +136,13 @@ struct gb_sdio_transfer_response {
     __le16 data_blksz;
     /** SDIO Data */
     __u8   data[0];
+} __packed;
+
+/**
+ * SDIO Event Request
+ */
+struct gb_sdio_event_request {
+    __u8    event;
 } __packed;
 
 #endif /* _GREYBUS_SDIO_GB_H_ */
