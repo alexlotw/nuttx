@@ -119,3 +119,7 @@ endif
 ifeq ($(CONFIG_ARCH_CHIP_DEVICE_HID), y)
 CHIP_CSRCS += tsb_hid_dummy_touch.c
 endif
+
+ifeq ($(CONFIG_ARCH_CHIP_DEVICE_SDIO),y)
+CHIP_CSRCS += tsb_sdio.c
+endif
