@@ -320,6 +320,8 @@ static int gb_sdio_init(unsigned int cport)
 {
     int ret;
 
+    lldbg("gb_sdio_init ..............\n");
+
     info = zalloc(sizeof(*info));
     if (info == NULL) {
         return -ENOMEM;
