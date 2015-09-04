@@ -172,6 +172,8 @@ static int tsb_sdio_dev_open(struct device *dev)
     irqstate_t flags;
     int ret = 0;
 
+    lldbg("tsb_sdio_dev_open() \n");
+
     flags = irqsave();
 
     if (info->flags & SDIO_FLAG_OPEN) {
@@ -180,6 +182,8 @@ static int tsb_sdio_dev_open(struct device *dev)
     }
 
     info->flags = SDIO_FLAG_OPEN;
+
+    lldbg("tsb_sdio_dev_open() success \n");
 
 err_irqrestore:
     irqrestore(flags);
