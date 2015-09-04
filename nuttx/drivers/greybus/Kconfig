@@ -46,6 +46,7 @@ config GREYBUS_GPIO_PHY
 
 config GREYBUS_I2C_PHY
 	bool "I2C PHY support"
+	depends on ARCH_CHIP_DEVICE_I2C
 	select I2C
 	select I2C_TRANSFER
 	default n
