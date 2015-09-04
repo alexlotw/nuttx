@@ -180,6 +180,12 @@ static struct device_resource tsb_sdio_resources[] = {
         .start  = UHSSD_BASE,
         .count  = UHSSD_SIZE,
     },
+    {
+        .name   = "irq_sdio",
+        .type   = DEVICE_RESOURCE_TYPE_IRQ,
+        .start  = TSB_IRQ_UHS,
+        .count  = 1,
+    },
 };
 #endif
 

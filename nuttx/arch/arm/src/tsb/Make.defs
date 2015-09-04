@@ -66,7 +66,11 @@ CHIP_CSRCS += tsb_main.c tsb_lowputc.c tsb_serial.c
 CHIP_CSRCS += tsb_scm.c
 CHIP_CSRCS += tsb_gpio.c
 CHIP_CSRCS += $(USB_CSRCS)
+
+ifeq ($(CONFIG_ARCH_CHIP_DEVICE_I2C),y)
 CHIP_CSRCS += tsb_i2c.c
+endif
+
 CHIP_CSRCS += tsb_cdsi.c
 
 ifeq ($(CONFIG_ARCH_CHIP_DEVICE_PWM),y)

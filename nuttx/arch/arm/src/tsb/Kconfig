@@ -100,6 +100,7 @@ config ARCH_CHIP_PINSHARE1_NONE
 
 config ARCH_CHIP_DEVICE_PWM
 	bool "PWM Support"
+	depends on !ARCH_CHIP_DEVICE_SDIO
 	select DEVICE_CORE
 	---help---
 		TSB PWM controller driver
@@ -113,6 +114,7 @@ config ARCH_CHIP_DEVICE_SPI_BITBANG
 
 config ARCH_CHIP_DEVICE_UART
 	bool "UART Support"
+	depends on !ARCH_CHIP_DEVICE_SDIO
 	select DEVICE_CORE
 	---help---
 		TSB UART Driver
@@ -146,6 +148,32 @@ config ARCH_CHIP_TSB_I2S
 	select ARCH_CHIP_DEVICE_I2S
 	---help---
 		TSB I2S Controller Driver
+
+endchoice
+
+choice
+	prompt "Toshiba PinShare15 conflict"
+	default ARCH_CHIP_PINSHARE15_NONE
+	depends on ARCH_CHIP_GPBRIDGE
+	---help---
+		The Toshiba GPBridge I2C and SDIO drivers
+		conflict at PinShare15 so only one can be enabled at a time.
+
+config ARCH_CHIP_PINSHARE15_NONE
+	bool "None"
+	---help---
+		Disable I2C and SDIO drivers
+
+config ARCH_CHIP_DEVICE_I2C
+	bool "I2C Support"
+	---help---
+		TSB I2C driver
+
+config ARCH_CHIP_DEVICE_SDIO
+	bool "SDIO Support"
+	select DEVICE_CORE
+	---help---
+		TSB SDIO Driver
 
 endchoice
 
@@ -206,14 +234,6 @@ config ARCH_CHIP_DEVICE_SPI
 	---help---
 		TSB SPI Master Driver
 
-
-config ARCH_CHIP_DEVICE_SDIO
-	bool "SDIO Support"
-	depends on ARCH_CHIP_GPBRIDGE
-	select DEVICE_CORE
-	default n
-	---help---
-		TSB SDIO Driver
 
 choice
 	prompt "Drive Strength for the TRACE Signals"
