@@ -95,6 +95,8 @@ static uint8_t gb_sdio_protocol_version(struct gb_operation *operation)
 {
     struct gb_sdio_proto_version_response *response = NULL;
 
+    lldbg("gb_sdio_protocol_version() \n");
+
     response = gb_operation_alloc_response(operation, sizeof(*response));
     if (!response) {
         return GB_OP_NO_MEMORY;
@@ -121,6 +123,8 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
     struct sdio_cap cap;
     int ret;
 
+    lldbg("gb_sdio_protocol_get_capabilities() \n");
+    
     ret = device_sdio_get_capabilities(info->dev, &cap);
     if (ret) {
         return GB_OP_UNKNOWN_ERROR;
@@ -162,6 +166,8 @@ static uint8_t gb_sdio_protocol_set_ios(struct gb_operation *operation)
     struct sdio_ios ios;
     int ret;
 
+    lldbg("gb_sdio_protocol_set_ios() \n");
+
     request = gb_operation_get_request_payload(operation);
 
     if (gb_operation_get_request_payload_size(operation) < sizeof(*request)) {
@@ -200,6 +206,8 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
     struct sdio_cmd cmd;
     uint32_t resp[4];
     int i, ret;
+
+    lldbg("gb_sdio_protocol_command() \n");
 
     request = gb_operation_get_request_payload(operation);
 
@@ -256,6 +264,8 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
     struct gb_sdio_transfer_response *response;
     struct sdio_transfer transfer;
     int ret;
+
+    lldbg("gb_sdio_protocol_transfer() \n");
 
     request = gb_operation_get_request_payload(operation);
 
@@ -320,7 +330,7 @@ static int gb_sdio_init(unsigned int cport)
 {
     int ret;
 
-    lldbg("gb_sdio_init ..............\n");
+    lldbg("gb_sdio_init() \n");
 
     info = zalloc(sizeof(*info));
     if (info == NULL) {
@@ -340,6 +350,8 @@ static int gb_sdio_init(unsigned int cport)
         goto err_close_device;
     }
 
+    lldbg("gb_sdio_init() success \n");
+        
     return 0;
 
 err_close_device:
