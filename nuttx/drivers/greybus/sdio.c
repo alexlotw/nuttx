@@ -67,16 +67,21 @@ static int event_callback(uint8_t event)
     struct gb_operation *operation;
     struct gb_sdio_event_request *request;
 
+    lldbg("event_callback() \n");
+    
     operation = gb_operation_create(info->cport, GB_SDIO_TYPE_EVENT,
                                     sizeof(*request));
     if (!operation) {
         return -EIO;
     }
-
+    
     request = gb_operation_get_request_payload(operation);
     request->event = event;
 
     gb_operation_send_request(operation, NULL, false);
+
+    lldbg("event_callback sent out 0x%x \n", request->event);
+    
     gb_operation_destroy(operation);
 
     return 0;
@@ -144,11 +149,17 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
         cap.max_blk_size = 512;
     }
 
+    cap.ocr = 0xFFFFFFFF;
     response->caps = cpu_to_le32(cap.caps);
     response->ocr = cpu_to_le32(cap.ocr);
     response->max_blk_count = cpu_to_le16(cap.max_blk_count);
     response->max_blk_size = cpu_to_le16(cap.max_blk_size);
 
+    lldbg("get_capabilities: caps: 0x%x \n", response->caps);
+    lldbg("get_capabilities: ocr: 0x%x \n", response->ocr);
+    lldbg("get_capabilities: max_blk_count: %d \n", response->max_blk_count);
+    lldbg("get_capabilities: max_blk_size: %d \n", response->max_blk_size);
+    
     return GB_OP_SUCCESS;
 }
 
@@ -183,11 +194,22 @@ static uint8_t gb_sdio_protocol_set_ios(struct gb_operation *operation)
     ios.timing = request->timing;
     ios.signal_voltage = request->signal_voltage;
     ios.drv_type = request->drv_type;
+
+    lldbg("set_ios: clock: %d \n", ios.clock);
+    lldbg("set_ios: vdd: 0x%x \n", ios.vdd);
+    lldbg("set_ios: bus_mode: 0x%x \n", ios.bus_mode);
+    lldbg("set_ios: power_mode: 0x%x \n", ios.power_mode);
+    lldbg("set_ios: bus_width: %d \n", ios.bus_width);
+    lldbg("set_ios: signal_voltage: 0x%x \n", ios.signal_voltage);
+    lldbg("set_ios: drv_type: 0x%x \n", ios.drv_type);
+    
     ret = device_sdio_set_ios(info->dev, &ios);
     if (ret) {
+        lldbg("device_sdio_set_ios ERR \n");
         return GB_OP_UNKNOWN_ERROR;
     }
 
+    lldbg("device_sdio_set_ios OK \n");
     return GB_OP_SUCCESS;
 }
 
@@ -207,7 +229,7 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
     uint32_t resp[4];
     int i, ret;
 
-    lldbg("gb_sdio_protocol_command() \n");
+    lldbg("gb_sdio_protocol_command() ++++++++++++++++++++++++++\n");
 
     request = gb_operation_get_request_payload(operation);
 
@@ -216,18 +238,33 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
         return GB_OP_INVALID;
     }
 
+    for (i = 0; i < 4; i++) {
+        resp[i] = 0;
+    }
+
     cmd.cmd = request->cmd;
     cmd.cmd_flags = request->cmd_flags;
     cmd.cmd_type = request->cmd_type;
     cmd.cmd_arg = le32_to_cpu(request->cmd_arg);
     cmd.resp = resp;
+
+    lldbg("cmd:cmd = %d \n", cmd.cmd);
+    lldbg("cmd:cmd_flags = 0x%x \n", cmd.cmd_flags);
+    lldbg("cmd:cmd_type = 0x%x \n", cmd.cmd_type);
+    lldbg("cmd:cmd_arg = 0x%x \n", cmd.cmd_arg);
+    
     ret = device_sdio_send_cmd(info->dev, &cmd);
-    if (ret) {
+    if (ret == -EINVAL) {
+        lldbg("device_sdio_send_cmd ERR \n");
         return GB_OP_UNKNOWN_ERROR;
+    }
+    if (ret == -ETIMEDOUT) {
+        lldbg("device_sdio_send_cmd TIMEOUT \n");
     }
 
     response = gb_operation_alloc_response(operation, sizeof(*response));
     if (!response) {
+        lldbg("gb_operation_alloc_response ERR \n");
         return GB_OP_NO_MEMORY;
     }
 
@@ -244,8 +281,10 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
      */
     for (i = 0; i < 4; i++) {
         response->resp[i] = cpu_to_le32(resp[i]);
+        lldbg("response->resp[%d] = 0x%x \n", i, resp[i]);
     }
 
+    lldbg("gb_sdio_protocol_command() OK -------------------------- \n");
     return GB_OP_SUCCESS;
 }
 
@@ -265,7 +304,7 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
     struct sdio_transfer transfer;
     int ret;
 
-    lldbg("gb_sdio_protocol_transfer() \n");
+    lldbg("gb_sdio_protocol_transfer() ================================= \n");
 
     request = gb_operation_get_request_payload(operation);
 
@@ -273,6 +312,9 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
         gb_error("dropping short message\n");
         return GB_OP_INVALID;
     }
+
+    lldbg("request->data_blocks = %d \n", request->data_blocks);
+    lldbg("request->data_blksz = %d \n", request->data_blksz);
 
     transfer.blocks = le16_to_cpu(request->data_blocks);
     transfer.blksz = le16_to_cpu(request->data_blksz);
@@ -302,17 +344,29 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
         if (!response) {
             return GB_OP_NO_MEMORY;
         }
+        lldbg("start to read... \n");
         transfer.data = response->data;
         ret = device_sdio_read(info->dev, &transfer);
         if (ret) {
+            lldbg("device_sdio_read ERR \n");
             return GB_OP_UNKNOWN_ERROR;
         }
+        lldbg("device_sdio_read OK \n");
+
+        {
+            uint32_t *datap = (uint32_t *)transfer.data;
+
+            lldbg("******** data 0x%08x, 0x%08x \n", datap[0], datap[1]);
+        }
+        
         response->data_blocks = cpu_to_le16(transfer.blocks);
         response->data_blksz = cpu_to_le16(transfer.blksz);
     }
     else {
         return GB_OP_UNKNOWN_ERROR;
     }
+
+    lldbg("gb_sdio_protocol_transfer()------------------------------ \n");
 
     return GB_OP_SUCCESS;
 }
