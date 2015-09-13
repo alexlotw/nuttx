@@ -166,18 +166,18 @@
 #define MMC_BUSMODE_OPENDRAIN   1
 #define MMC_BUSMODE_PUSHPULL    2
 
-#define MMC_POWER_OFF       0
-#define MMC_POWER_UP        1
-#define MMC_POWER_ON        2
-#define MMC_POWER_UNDEFINED 3
+#define MMC_POWER_OFF           0
+#define MMC_POWER_UP            1
+#define MMC_POWER_ON            2
+#define MMC_POWER_UNDEFINED     3
 
-#define MMC_BUS_WIDTH_1     0
-#define MMC_BUS_WIDTH_4     2
-#define MMC_BUS_WIDTH_8     3
+#define MMC_BUS_WIDTH_1         0
+#define MMC_BUS_WIDTH_4         2
+#define MMC_BUS_WIDTH_8         3
 
-#define MMC_TIMING_LEGACY   0
-#define MMC_TIMING_MMC_HS   1
-#define MMC_TIMING_SD_HS    2
+#define MMC_TIMING_LEGACY       0
+#define MMC_TIMING_MMC_HS       1
+#define MMC_TIMING_SD_HS        2
 #define MMC_TIMING_UHS_SDR12    3
 #define MMC_TIMING_UHS_SDR25    4
 #define MMC_TIMING_UHS_SDR50    5
@@ -214,18 +214,18 @@
 #define MMC_VDD_34_35       0x00400000  /* VDD voltage 3.4 ~ 3.5 */
 #define MMC_VDD_35_36       0x00800000  /* VDD voltage 3.5 ~ 3.6 */
 
-#define MMC_CARD_NONE       0
-#define MMC_CARD_INSERTED   1
-#define MMC_CARD_REMOVED    2
-
 /*
  * other definition
  */
-#define DELAY_1_MS  1000
+#define DELAY_1_MS      1000
 
-#define DATA_NONE   0
-#define DATA_READ   1
-#define DATA_WRITE  2
+#define CARD_NONE       0
+#define CARD_INSERTED   1
+#define CARD_REMOVED    2
+
+#define DATA_NONE       0
+#define DATA_READ       1
+#define DATA_WRITE      2
 
 /**
  * @brief SDIO device private information
@@ -235,57 +235,48 @@ struct tsb_sdio_info {
     struct device *dev;
     /** Host controller state */
     uint32_t flags;
+    /** SDIO IRQ number */
+    int sdio_irq;
     /** SDIO register base */
     uint32_t reg_base;
-
-    uint8_t card_event;
-
-    uint8_t *buffer;
-    uint16_t size;
+    /** command error */
+    uint32_t cmd_err;
+    /** command with data flog */
+    uint16_t data_cmd;
+    /** data direction */
     uint16_t data_rw;
-
-
+    /** caller data buffer */
+    uint8_t *buffer;
+    /** caller data size */
+    uint16_t size;
+    /** data access error */
+    uint32_t data_err;
     /** Command semaphore */
     sem_t cmd_sem;
     /** Write semaphore */
-    sem_t write_sem;
-    /** Read semaphore */
-    sem_t read_sem;
+    sem_t data_sem;
     /** DMA handler */
     void *dma;
-    /** SDIO IRQ number */
-    int sdio_irq;
     /** Data thread exit flag */
     bool thread_abort;
     /** Write data thread handle */
-    pthread_t write_thread;
-    /** Read data thread handle */
-    pthread_t read_thread;
+    pthread_t data_thread;
     /** Read or write complete callback function*/
-    sdio_transfer_callback callback;
+    sdio_transfer_callback data_callback;
     /** Event callback function */
-    sdio_event_callback callback;
-
-    /*
-     *  for command passer
-     */
-    uint16_t data_cmd;
-    uint16_t data_flags;
-
-    uint32_t data_err;
+    sdio_event_callback evt_callback;
+    /** card insert/remove status */
     uint32_t inserted;
 };
 
 static struct device *sdio_dev = NULL;
 
-
 /**
- * @brief
+ * @brief Read byte data from address
  *
- * @param
- * @param
- * @param
- * @return
+ * @param base Base address.
+ * @param offset The offset of base address.
+ * @return Data in byte.
  */
 static uint8_t read_byte(uint32_t base, uint32_t offset)
 {
@@ -294,12 +285,12 @@ static uint8_t read_byte(uint32_t base, uint32_t offset)
 }
 
 /**
- * @brief
+ * @brief write byte data from address
  *
- * @param
- * @param
- * @param
- * @return
+ * @param base Base address.
+ * @param value Data to write.
+ * @param offset The offset of base address.
+ * @return None.
  */
 static void write_byte(uint32_t base, uint8_t value, uint32_t offset)
 {
@@ -309,12 +300,11 @@ static void write_byte(uint32_t base, uint8_t value, uint32_t offset)
 }
 
 /**
- * @brief
+ * @brief Read word data from address
  *
- * @param
- * @param
- * @param
- * @return
+ * @param base Base address.
+ * @param offset The offset of base address.
+ * @return Data in word.
  */
 static uint16_t read_word(uint32_t base, uint32_t offset)
 {
@@ -323,12 +313,12 @@ static uint16_t read_word(uint32_t base, uint32_t offset)
 }
 
 /**
- * @brief
+ * @brief write word data from address
  *
- * @param
- * @param
- * @param
- * @return
+ * @param base Base address.
+ * @param value Data to write.
+ * @param offset The offset of base address.
+ * @return None.
  */
 static void write_word(uint32_t base, uint16_t value, uint32_t offset)
 {
@@ -338,12 +328,11 @@ static void write_word(uint32_t base, uint16_t value, uint32_t offset)
 }
 
 /**
- * @brief
+ * @brief Read long data from address
  *
- * @param
- * @param
- * @param
- * @return
+ * @param base Base address.
+ * @param offset The offset of base address.
+ * @return Data in long.
  */
 static uint32_t read_long(uint32_t base, uint32_t offset)
 {
@@ -352,12 +341,12 @@ static uint32_t read_long(uint32_t base, uint32_t offset)
 }
 
 /**
- * @brief
+ * @brief write long data from address
  *
- * @param
- * @param
- * @param
- * @return
+ * @param base Base address.
+ * @param value Data to write.
+ * @param offset The offset of base address.
+ * @return None.
  */
 static void write_long(uint32_t base, uint32_t value, uint32_t offset)
 {
@@ -367,9 +356,9 @@ static void write_long(uint32_t base, uint32_t value, uint32_t offset)
 }
 
 /**
- * @brief
+ * @brief Caculate divisor
  *
- * @param
+ * @param base_div
  * @param
  * @param
  * @return
