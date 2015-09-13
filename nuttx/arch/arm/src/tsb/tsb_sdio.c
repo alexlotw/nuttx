@@ -1238,10 +1238,10 @@ static int sdio_change_bus_width(struct sdio_ios *ios,
                                  struct tsb_sdio_info *info)
 {
     /* Disable Card Interrupt in host */
-    sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_STATUS_EN,
-                     CARD_INTERRUPT_STAT_EN);
-    sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
-                     CARD_INTERRUPT_EN);
+    //sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_STATUS_EN,
+    //                 CARD_INTERRUPT_STAT_EN);
+    //sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
+    //                 CARD_INTERRUPT_EN);
 
     /* Change bit mode for host */
     switch (ios->bus_width) {
@@ -1253,16 +1253,17 @@ static int sdio_change_bus_width(struct sdio_ios *ios,
     case HC_SDIO_BUS_WIDTH_8:
         sdio_reg_bit_set(info->sdio_reg_base, HOST_PWR_BLKGAP_WAKEUP_CNTRL,
                          DATA_TRASFER_WIDTH);
+        lldbg(".......change to 4 bits");
         break;
     default:
         return -EINVAL;
     }
 
     /* Enable Card Interrupt in host */
-    sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS_EN,
-                     CARD_INTERRUPT_STAT_EN);
-    sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
-                     CARD_INTERRUPT_EN);
+    //sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS_EN,
+    //                 CARD_INTERRUPT_STAT_EN);
+    //sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
+    //                 CARD_INTERRUPT_EN);
 
     return 0;
 }
@@ -1556,6 +1557,7 @@ static void sdio_read_fifo_data(struct tsb_sdio_info *info)
                          DAT_LINE_ACTIVE | COMMAND_INHIBIT_DAT;
     int16_t remaining = 0, i = 0;
     uint8_t *rbuf = info->read_buf.buffer;
+    uint32_t j = 2;
 
     presentstate = sdio_getreg(info->sdio_reg_base, PRESENTSTATE);
 
@@ -1571,7 +1573,12 @@ static void sdio_read_fifo_data(struct tsb_sdio_info *info)
              * buffer? */
             remaining = info->read_buf.tail - info->read_buf.head;
             buf_port = sdio_getreg(info->sdio_reg_base, DATAPORTREG);
-            //lldbg("data = 0x%08p \n", buf_port);
+            
+            if (j) {
+                lldbg("data = 0x%08p \n", buf_port);
+                j--;
+            }
+            
             if (remaining >= sizeof(uint32_t)) {
                 /* Yes. Transfer uint32_t data in FIFO to the user buffer */
                 rbuf[info->read_buf.head] = (uint8_t)buf_port;
@@ -1641,9 +1648,9 @@ static void *sdio_read_data_thread(void *data)
     struct tsb_sdio_info *info = data;
 
     while (1) {
-        lldbg("sem_wait+ \n");
+        //lldbg("sem_wait+ \n");
         sem_wait(&info->read_sem);
-        lldbg("sem_wait- \n");
+        //lldbg("sem_wait- \n");
         if (info->thread_abort) {
             /* Exit sdio_read_data_thread loop */
             break;
@@ -1695,7 +1702,7 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
      * HC_SDIO_CAP_UHS_SDR104, HC_SDIO_CAP_UHS_DDR50, HC_SDIO_CAP_HS200_1_2V,
      * HC_SDIO_CAP_HS200_1_8V, HC_SDIO_CAP_HS400_1_2V, HC_SDIO_CAP_HS400_1_8V,
      * HC_SDIO_CAP_ERASE */
-    lldbg("tsb_sdio_get_capability() \n");
+    //lldbg("tsb_sdio_get_capability() \n");
     cap->caps = HC_SDIO_CAP_4_BIT_DATA | HC_SDIO_CAP_MMC_HS |
                 HC_SDIO_CAP_SD_HS | HC_SDIO_CAP_POWER_OFF_CARD |
                 HC_SDIO_CAP_UHS_SDR12 | HC_SDIO_CAP_UHS_SDR25 |
@@ -1726,13 +1733,15 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
  * @param ios Pointer to structure of ios.
  * @return 0 on success, negative errno on error.
  */
+static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd);
+ 
 static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
 
     uint32_t uhs_mode_sel = 0;
 
-    lldbg("ios->power_mode =  \n");
+    //lldbg("ios->power_mode =  \n");
 
     /* Set clock */
     if (sdio_clock_supply(ios, info)) {
@@ -1756,14 +1765,30 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
         break;
     case HC_SDIO_POWER_UNDEFINED:
     default:
-        lldbg("ios->power_mode ERR \n");
+        //lldbg("ios->power_mode ERR \n");
         return -EINVAL;
     }
 
     /* Set bus width */
     if (sdio_change_bus_width(ios, info)) {
         return -EINVAL;
+    } else {
+
+        if (ios->bus_width == HC_SDIO_BUS_WIDTH_4) {
+            struct sdio_cmd cmd;
+            uint32_t resp[4];
+            
+            cmd.cmd = 100;
+            cmd.cmd_flags = 0x15;
+            cmd.cmd_type = 0x01;
+            cmd.cmd_arg = 0;
+            cmd.resp = resp;
+            
+            tsb_sdio_send_cmd(dev, &cmd);
+        }
     }
+
+    
 
     /* Set timing */
     switch (ios->timing) {
@@ -1789,7 +1814,7 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
     case HC_SDIO_TIMING_MMC_HS200:
     case HC_SDIO_TIMING_MMC_HS400:
     default:
-        lldbg("ios->timing ERR \n");
+        //lldbg("ios->timing ERR \n");
         return -EINVAL;
     }
     sdio_reg_field_set(info->sdio_reg_base, AUTOCMD12ERST_HOST_CTRL2,
@@ -1817,11 +1842,11 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
     case HC_SDIO_SET_DRIVER_TYPE_B:
         break; // alex
     default:
-        lldbg("ios->drv_type ERR \n");
+        //lldbg("ios->drv_type ERR \n");
         return -EINVAL;
     }
 
-    lldbg("tsb_sdio_set_ios() OK \n");
+    //lldbg("tsb_sdio_set_ios() OK \n");
     return 0;
 }
 
@@ -1892,16 +1917,25 @@ static void cmd_parser(struct device *dev, struct sdio_cmd *cmd)
         info->blocks = (uint16_t)cmd->cmd_arg;
     } else if (cmd->cmd == HC_MMC_READ_SINGLE_BLOCK) { // CMD17
         info->data_cmd = 1;
+        info->blocks = 1;
+        info->blksz = 512;
         info->data_flags = MMC_DATA_READ;
     } else if (cmd->cmd == HC_MMC_READ_MULTIPLE_BLOCK) { // CMD18
         info->data_cmd = 1;
         info->data_flags = MMC_DATA_READ;
     } else if (cmd->cmd == HC_MMC_WRITE_BLOCK) { // CMD24
         info->data_cmd = 1;
+        info->blocks = 1;
+        info->blksz = 512;
         info->data_flags = MMC_DATA_WRITE;
     } else if (cmd->cmd == HC_MMC_WRITE_MULTIPLE_BLOCK) { // CMD25
         info->data_cmd = 1;
         info->data_flags = MMC_DATA_WRITE;
+    } else if (cmd->cmd == 100) { // CMD17 for workaround
+        cmd->cmd = 17;
+        info->data_cmd = 1;
+        info->blocks = 0;
+        info->blksz = 0;
     } else {
         info->data_cmd = 0;
         info->blocks = 0;
@@ -1919,7 +1953,10 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
     uint8_t cmd_flags = 0;
     uint8_t retry = 0;
     
-    lldbg("tsb_sdio_send_cmd() \n");
+    //lldbg("tsb_sdio_send_cmd() \n");
+
+    lldbg("*** CMD(%d), Flags(0x%02x), Type(0x%02x), Arg(0x%08x) *** \n",
+          cmd->cmd, cmd->cmd_flags, cmd->cmd_type, cmd->cmd_arg);
 
     info->cmd_flags = cmd->cmd_flags;
 
@@ -1946,7 +1983,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
      * prepare data information
      */
     if (info->data_cmd) {
-        lldbg("cmd with data\n");
+        //lldbg("cmd with data\n");
         //sdhci_writel(info->sdio_reg_base,
         //             (SDHCI_INT_DATA_AVAIL | SDHCI_INT_SPACE_AVAIL),
         //             SDHCI_INT_ENABLE);
@@ -1956,9 +1993,11 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 
         sdhci_writew(info->sdio_reg_base, info->blksz, SDHCI_BLOCK_SIZE);
         sdhci_writew(info->sdio_reg_base, info->blocks, SDHCI_BLOCK_COUNT);
+
+        lldbg(">> data: size(%d), blocks(%d) \n", info->blksz, info->blocks);
     }
 
-    lldbg("test 1\n");
+    //lldbg("test 1\n");
 
     /* Issue the command with the busy? */
     if (cmd->cmd_flags == HC_SDIO_RSP_R1B) {
@@ -1977,7 +2016,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
         }
     }
 
-    lldbg("test 2\n");
+    //lldbg("test 2\n");
     
     /* Set Argument 1 Reg register */
     sdio_putreg(info->sdio_reg_base, ARGUMENT1, cmd->cmd_arg);
@@ -2002,26 +2041,26 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
         cmd_flags |= SDHCI_CMD_DATA;
     }
 
-    lldbg("test 3 cmd = 0x%04x \n", SDHCI_MAKE_CMD(cmd->cmd, cmd_flags));
+    //lldbg("test 3 cmd = 0x%04x \n", SDHCI_MAKE_CMD(cmd->cmd, cmd_flags));
 
     sdhci_writew(info->sdio_reg_base, SDHCI_MAKE_CMD(cmd->cmd, cmd_flags),
                  SDHCI_COMMAND);
 
-    lldbg("SDHCI_BLOCK_SIZE = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_BLOCK_SIZE));
-    lldbg("SDHCI_BLOCK_COUNT = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_BLOCK_COUNT));
-    lldbg("SDHCI_ARGUMENT = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_ARGUMENT));
-    lldbg("SDHCI_TRANSFER_MODE = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_TRANSFER_MODE));
-    lldbg("SDHCI_COMMAND = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_COMMAND));
-    lldbg("SDHCI_INT_ENABLE = 0x%08x \n", sdhci_readl(info->sdio_reg_base, SDHCI_INT_ENABLE));
+    //lldbg("SDHCI_BLOCK_SIZE = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_BLOCK_SIZE));
+    //lldbg("SDHCI_BLOCK_COUNT = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_BLOCK_COUNT));
+    //lldbg("SDHCI_ARGUMENT = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_ARGUMENT));
+    //lldbg("SDHCI_TRANSFER_MODE = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_TRANSFER_MODE));
+    //lldbg("SDHCI_COMMAND = 0x%04x \n", sdhci_readw(info->sdio_reg_base, SDHCI_COMMAND));
+    //lldbg("SDHCI_INT_ENABLE = 0x%08x \n", sdhci_readl(info->sdio_reg_base, SDHCI_INT_ENABLE));
     
-    lldbg("before wait...\n");
+    //lldbg("before wait...\n");
     //sdio_dump_registers(info);
 
     /* Wait for Command Complete Int register */
     sem_wait(&info->cmd_sem);
     usleep(COMMAND_INTERVAL);
 
-    lldbg("after wait... \n");
+    //lldbg("after wait... \n");
     //sdio_dump_registers(info);
     
 /*    if (cmd->cmd == 9) {
@@ -2052,7 +2091,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
-    lldbg("tsb_sdio_write() \n");
+    //lldbg("tsb_sdio_write() \n");
 
     if (info->flags & SDIO_FLAG_WRITE) {
         return -EBUSY;
@@ -2090,12 +2129,12 @@ static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
 
-    lldbg("tsb_sdio_read() \n");
+    //lldbg("tsb_sdio_read() \n");
 
     //sdio_dump_registers(info);
 
     if (info->flags & SDIO_FLAG_READ) {
-        lldbg("tsb_sdio_read() flag err \n");
+        //lldbg("tsb_sdio_read() flag err \n");
         return -EBUSY;
     }
     info->flags |= SDIO_FLAG_READ;
@@ -2108,10 +2147,10 @@ static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
     info->read_callback = transfer->callback;
 
     if (!info->read_callback) { /* Blocking */
-        lldbg("tsb_sdio_read() blocking + \n");
+        //lldbg("tsb_sdio_read() blocking + \n");
         sdio_read_fifo_data(info);
         info->flags &= ~SDIO_FLAG_READ;
-        lldbg("tsb_sdio_read() blocking - \n");
+        //lldbg("tsb_sdio_read() blocking - \n");
     } else { /* Non-blocking */
         sem_post(&info->read_sem);
     }
@@ -2130,7 +2169,7 @@ static int tsb_sdio_attach_callback(struct device *dev,
                                     sdio_event_callback callback)
 {
     struct tsb_sdio_info *info = NULL;
-    lldbg("tsb_sdio_attach_callback() \n");
+    //lldbg("tsb_sdio_attach_callback() \n");
 
     if (!dev || !device_get_private(dev)) {
         return -EINVAL;
@@ -2160,7 +2199,7 @@ static int tsb_sdio_dev_open(struct device *dev)
     int ret = 0;
     uint8_t value = 0;
 
-    lldbg("tsb_sdio_dev_open() \n");
+    //lldbg("tsb_sdio_dev_open() \n");
     if (!dev || !device_get_private(dev)) {
         return -EINVAL;
     }
@@ -2231,7 +2270,7 @@ static void tsb_sdio_dev_close(struct device *dev)
     struct tsb_sdio_info *info = NULL;
     irqstate_t flags;
 
-    lldbg("tsb_sdio_dev_close() \n");
+    //lldbg("tsb_sdio_dev_close() \n");
     if (!dev || !device_get_private(dev)) {
         return;
     }
@@ -2288,7 +2327,7 @@ static int tsb_sdio_dev_probe(struct device *dev)
     struct tsb_sdio_info *info = NULL;
     irqstate_t flags;
     int ret = 0;
-    lldbg("tsb_sdio_dev_probe() \n");
+    //lldbg("tsb_sdio_dev_probe() \n");
 
     if (!dev) {
         return -EINVAL;
@@ -2385,7 +2424,7 @@ static void tsb_sdio_dev_remove(struct device *dev)
 {
     struct tsb_sdio_info *info = NULL;
     irqstate_t flags;
-    lldbg("tsb_sdio_dev_remove() \n");
+    //lldbg("tsb_sdio_dev_remove() \n");
 
     if (!dev || !device_get_private(dev)) {
         return;
