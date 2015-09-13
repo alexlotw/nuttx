@@ -349,97 +349,15 @@ static void bit_set(uint32_t reg, uint32_t offset, uint32_t bitmask)
 {
     uint32_t reg_val = getreg32(reg + offset);
     reg_val |= bitmask;
-    putreg32(reg + offset, reg_val);
+    putreg32(reg_val, reg + offset);
 }
 
 static void bit_clr(uint32_t reg, uint32_t offset, uint32_t bitmask)
 {
     uint32_t reg_val = getreg32(reg + offset);
     reg_val &= ~bitmask;
-    putreg32(reg + offset, reg_val);
+    putreg32(reg_val, reg + offset);
 }
-
-/**
- * @brief Read byte data from address
- *
- * @param base Base address.
- * @param offset The offset of base address.
- * @return Data in byte.
- */
-static uint8_t read_byte(uint32_t base, uint32_t offset)
-{
-    uint8_t *datap = (uint8_t*) (base + offset);
-    return *datap;
-}
-
-/**
- * @brief write byte data from address
- *
- * @param base Base address.
- * @param value Data to write.
- * @param offset The offset of base address.
- * @return None.
- */
-static void write_byte(uint32_t base, uint8_t value, uint32_t offset)
-{
-    uint8_t *datap = (uint8_t*) (base + offset);
-    *datap = value;
-}
-
-/**
- * @brief Read word data from address
- *
- * @param base Base address.
- * @param offset The offset of base address.
- * @return Data in word.
- */
-static uint16_t read_word(uint32_t base, uint32_t offset)
-{
-    uint16_t *datap = (uint16_t*) (base + offset);
-    return *datap;
-}
-
-/**
- * @brief write word data from address
- *
- * @param base Base address.
- * @param value Data to write.
- * @param offset The offset of base address.
- * @return None.
- */
-static void write_word(uint32_t base, uint16_t value, uint32_t offset)
-{
-    uint16_t *datap = (uint16_t*) (base + offset);
-    *datap = value;
-}
-
-/**
- * @brief Read long data from address
- *
- * @param base Base address.
- * @param offset The offset of base address.
- * @return Data in long.
- */
-static uint32_t read_long(uint32_t base, uint32_t offset)
-{
-    uint32_t *datap = (uint32_t*) (base + offset);
-    return *datap;
-}
-
-/**
- * @brief write long data from address
- *
- * @param base Base address.
- * @param value Data to write.
- * @param offset The offset of base address.
- * @return None.
- */
-static void write_long(uint32_t base, uint32_t value, uint32_t offset)
-{
-    uint32_t *datap = (uint32_t*) (base + offset);
-    *datap = value;
-}
-
 
 /**
  * @brief
@@ -480,8 +398,8 @@ static void convert_rsp_136(uint32_t base, uint32_t *resp)
     uint8_t b;
 
     for (i = 0; i < 4; i++) {
-        r = read_long(base, SDHC_RESPONSE0 + (3 - i) * 4);
-        b = (i < 3) ? read_byte(base, (2 - i) * 4 + 3) : 0;
+        r = getreg32(base + SDHC_RESPONSE0 + (3 - i) * 4);
+        b = (i < 3) ? getreg8(base + (2 - i) * 4 + 3) : 0;
         resp[i] = r << 8 | b;
     }
 }
@@ -507,14 +425,14 @@ static void set_transfer_mode(struct tsb_sdio_info *info, struct sdio_cmd *cmd)
             mode |= SDHC_TRNS_AUTO_CMD12;
         }
         else if (cmd->cmd_flags & BIT(7)) {
-            write_long(info->reg_base, cmd->cmd_arg, SDHC_ARGUMENT2);
+            putreg32(cmd->cmd_arg, info->reg_base + SDHC_ARGUMENT2);
         }
     }
 
     if (info->data_rw == DATA_READ)
         mode |= SDHC_TRNS_READ;
 
-    write_word(info->reg_base, mode, SDHC_TRANSFER_MODE);
+    putreg16(mode, info->reg_base + SDHC_TRANSFER_MODE);
 }
 
 /**
@@ -527,9 +445,9 @@ static void set_transfer_mode(struct tsb_sdio_info *info, struct sdio_cmd *cmd)
  */
 static void sdhc_reset(struct tsb_sdio_info *info, uint8_t reset)
 {
-    write_byte(info->reg_base, reset, SDHC_SOFTWARE_RESET);
+    putreg8(reset, info->reg_base + SDHC_SOFTWARE_RESET);
 
-    while (read_byte(info->reg_base, SDHC_SOFTWARE_RESET) & reset) {
+    while (getreg8(info->reg_base + SDHC_SOFTWARE_RESET) & reset) {
         usleep(DELAY_1_MS);
     };
 }
@@ -547,7 +465,7 @@ static void sdhc_set_clock(struct tsb_sdio_info *info, uint32_t clock)
     uint16_t clk_val = 0;
     uint16_t retry, div;
 
-    write_word(info->reg_base, 0, SDHC_CLOCK_CTRL);
+    putreg16(0, info->reg_base + SDHC_CLOCK_CTRL);
 
     for (div = 1; div < SDHC_DIV_MASK; div <<= 1) {
         if ((info->base_clock / div) <= clock) {
@@ -558,9 +476,9 @@ static void sdhc_set_clock(struct tsb_sdio_info *info, uint32_t clock)
 
     clk_val |= (div & SDHC_DIV_MASK) << SDHC_DIV_SHIFT;
     clk_val |= SDHC_SD_CLK_EN;
-    write_word(info->reg_base, clk_val, SDHC_CLOCK_CTRL);
+    putreg16(clk_val, info->reg_base + SDHC_CLOCK_CTRL);
     retry = 10;
-    while (!(read_word(info->reg_base, SDHC_CLOCK_CTRL) & SDHC_CLK_STABLE)) {
+    while (!(getreg16(info->reg_base + SDHC_CLOCK_CTRL) & SDHC_CLK_STABLE)) {
         usleep(DELAY_1_MS);
         retry--;
         if (!retry) {
@@ -570,7 +488,7 @@ static void sdhc_set_clock(struct tsb_sdio_info *info, uint32_t clock)
     }
 
     clk_val |= SDHC_SD_CLK_EN;
-    write_word(info->reg_base, clk_val, SDHC_CLOCK_CTRL);
+    putreg16(clk_val, info->reg_base + SDHC_CLOCK_CTRL);
 
     info->cur_clock = clock;
 }
@@ -610,14 +528,11 @@ static void sdhc_set_power(struct tsb_sdio_info *info,
         }
     }
 
-    if (pwr == 0) {
-        write_byte(info->reg_base, 0, SDHC_POWER_CTRL);
-        vdd = 0;
-    } else {
+    if (pwr != 0) {
         pwr |= SDHC_PWR_ON;
-        write_byte(info->reg_base, pwr, SDHC_POWER_CTRL);
     }
-
+    
+    putreg8(pwr, info->reg_base + SDHC_POWER_CTRL);
     info->cur_power = mode;
 }
 
@@ -633,7 +548,7 @@ static void sdhc_set_bus_width(struct tsb_sdio_info *info, uint8_t width)
 {
     uint8_t ctrl;
 
-    ctrl = read_byte(info->reg_base, SDHC_HOST_CTRL);
+    ctrl = getreg8(info->reg_base + SDHC_HOST_CTRL);
 
     switch (width) {
     case MMC_BUS_WIDTH_4:
@@ -646,7 +561,7 @@ static void sdhc_set_bus_width(struct tsb_sdio_info *info, uint8_t width)
         lldbg("unsupport bus width");
     }
 
-    write_byte(info->reg_base, ctrl, SDHC_HOST_CTRL);
+    putreg8(ctrl, info->reg_base + SDHC_HOST_CTRL);
 
     info->cur_bus_width = width;
 }
@@ -686,7 +601,7 @@ static void *sdhc_data_thread(void *data)
         if (info->data_rw == DATA_READ) {
             /* read data from 32 bit fifo to 8 bit buffer */
             while (len) {
-                fifo = read_long(info->reg_base, SDHC_DATAPORT);
+                fifo = getreg32(info->reg_base + SDHC_DATAPORT);
                 for (i = 0; i < 4; i++, datap++, len--) {
                     *datap = fifo & 0xFF;
                     fifo >>= 8;
@@ -699,7 +614,7 @@ static void *sdhc_data_thread(void *data)
                     fifo |= *datap;
                     fifo <<= 8;
                 }
-                write_long(info->reg_base, fifo, SDHC_DATAPORT);
+                putreg32(fifo, info->reg_base + SDHC_DATAPORT);
             }
         } else {
             /* error */
@@ -743,8 +658,8 @@ static void sdhc_init(struct tsb_sdio_info *info)
                    SDHC_INT_WRITE_READY;
 
     /* Enable command interrupts */
-    write_long(info->reg_base, int_err_mask, SDHC_INT_ERR_STATUS_EN);
-    write_long(info->reg_base, int_err_mask, SDHC_INT_ERR_SIGNAL_EN);
+    putreg32(int_err_mask, info->reg_base + SDHC_INT_ERR_STATUS_EN);
+    putreg32(int_err_mask, info->reg_base + SDHC_INT_ERR_SIGNAL_EN);
 
     info->cur_clock = 0;
     sdhc_set_clock(info, info->cur_clock);
@@ -766,8 +681,8 @@ static void sdhc_init(struct tsb_sdio_info *info)
  */
 static void sdhc_deinit(struct tsb_sdio_info *info)
 {
-    write_long(info->reg_base, 0, SDHC_INT_ERR_STATUS_EN);
-    write_long(info->reg_base, 0, SDHC_INT_ERR_SIGNAL_EN);
+    putreg32(0, info->reg_base + SDHC_INT_ERR_STATUS_EN);
+    putreg32(0, info->reg_base + SDHC_INT_ERR_SIGNAL_EN);
 }
 
 
@@ -830,7 +745,7 @@ static int sdhc_host_irq(int irq, void *context)
     info->data_err = 0;
     info->cmd_err = 0;
 
-    int_err_status = read_long(info->reg_base, SDHC_INT_ERR_STATUS);
+    int_err_status = getreg32(info->reg_base + SDHC_INT_ERR_STATUS);
 
     if (int_err_status & SDHC_INT_CMD_CMPLT) {
         sem_post(&info->cmd_sem);
@@ -865,7 +780,7 @@ static int sdhc_host_irq(int irq, void *context)
         info->data_err = -1;
     }
 
-    write_long(info->reg_base, int_err_status, SDHC_INT_ERR_STATUS);
+    putreg32(int_err_status, info->reg_base + SDHC_INT_ERR_STATUS);
 
     return 0;
 }
@@ -893,7 +808,7 @@ static void chip_init(void)
     /* Assert the DLL enable */
     sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
     sysctl |= DLL_ENABLE;
-    putreg32(SYSCTL_BASE + UHSSD_DLLCTRL, sysctl);
+    putreg32(sysctl, SYSCTL_BASE + UHSSD_DLLCTRL);
 
     /* Pull up clk and SDIO data interface pins */
     bit_set(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
@@ -949,7 +864,7 @@ static void chip_deinit(void)
     /* turn off sd host controoler dll */
     sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
     sysctl &= DLL_ENABLE;
-    putreg32(SYSCTL_BASE + UHSSD_DLLCTRL, sysctl);
+    putreg32(sysctl, SYSCTL_BASE + UHSSD_DLLCTRL);
 
     /* stop sd host controller clock */
     tsb_clk_disable(TSB_CLK_SDIOSYS);
@@ -1022,20 +937,20 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
                MMC_VDD_33_34;
 
     /* max block count */
-    cap_reg = read_long(info->reg_base, SDHC_CAPABILITIES);
+    cap_reg = getreg32(info->reg_base + SDHC_CAPABILITIES);
     cap_reg = (cap_reg >> SDHC_CAP_MAX_BLK_SHIFT) & SDHC_CAP_MAX_BLK_MASK;
     cap->max_blk_size = SDHC_BASE_BLK * (1 << cap_reg);
 
     cap->max_blk_count = SDHC_MAX_BLK_COUNT;
 
     /* base clock */
-    clk_reg = read_word(info->reg_base, SDHC_CAPABILITIES);
+    clk_reg = getreg16(info->reg_base + SDHC_CAPABILITIES);
     info->base_clock = ((clk_reg >> SDHC_CAP_BASE_CLK_SHIFT) &
                         SDHC_CAP_BASE_CLK_MASK);
     info->base_clock *= ONE_MHZ;
 
     /* timeout clock */
-    clk_reg = read_word(info->reg_base, SDHC_CAPABILITIES);
+    clk_reg = getreg16(info->reg_base + SDHC_CAPABILITIES);
     info->timeout_clock = (clk_reg & SDHC_CAP_TIMEOUT_MASK) *
                           (clk_reg & SDHC_CAP_TO_UINT_MASK) ? ONE_MHZ : ONE_KHZ;
 
@@ -1104,7 +1019,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
     }
 
     retry = 100;
-    while (read_long(info->reg_base, SDHC_PRESENTSTATE) & mask) {
+    while (getreg32(info->reg_base + SDHC_PRESENTSTATE) & mask) {
         usleep(DELAY_1_MS);
         retry--;
         if (retry) {
@@ -1116,16 +1031,16 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
      * prepare data information
      */
     if (cmd->data_cmd) {
-        write_word(info->reg_base, cmd->data_blksz, SDHC_BLOCK_SIZE);
-        write_word(info->reg_base, cmd->data_blocks, SDHC_BLOCK_COUNT);
+        putreg16(cmd->data_blksz, info->reg_base + SDHC_BLOCK_SIZE);
+        putreg16(cmd->data_blocks, info->reg_base + SDHC_BLOCK_COUNT);
 
-        write_byte(info->reg_base, 0x03, SDHC_TIMEOUT_CTRL);
+        putreg8(0x03, info->reg_base + SDHC_TIMEOUT_CTRL);
 
         lldbg(">> data: size(%d), blocks(%d) \n", cmd->data_blksz, cmd->data_blocks);
     }
 
     /* Set Argument 1 Reg register */
-    write_long(info->reg_base, cmd->cmd_arg, SDHC_ARGUMENT);
+    putreg32(cmd->cmd_arg, info->reg_base + SDHC_ARGUMENT);
 
     /* Set transfer mode */
     set_transfer_mode(info, cmd);
@@ -1151,8 +1066,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 
     lldbg("cmd = 0x%04x \n", SDHC_MAKE_CMD(cmd->cmd, cmd_flags));
 
-    write_word(info->reg_base, SDHC_MAKE_CMD(cmd->cmd, cmd_flags),
-               SDHC_COMMAND);
+    putreg16(SDHC_MAKE_CMD(cmd->cmd, cmd_flags), info->reg_base + SDHC_COMMAND);
 
     //lldbg("SDHCI_BLOCK_SIZE = 0x%04x \n", sdhci_readw(info->reg_base, SDHCI_BLOCK_SIZE));
     //lldbg("SDHCI_BLOCK_COUNT = 0x%04x \n", sdhci_readw(info->reg_base, SDHCI_BLOCK_COUNT));
@@ -1173,7 +1087,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
         if (cmd_flags & SDHC_CMD_RESP_136) {
             convert_rsp_136(info->reg_base, cmd->resp);
         } else {
-            *cmd->resp = read_long(info->reg_base, SDHC_RESPONSE0);
+            *cmd->resp = getreg32(info->reg_base + SDHC_RESPONSE0);
         }
     }
 
