@@ -345,18 +345,18 @@ struct tsb_sdio_info {
 
 static struct device *sdio_dev = NULL;
 
-static void bit_set(uint32_t reg, uint32_t offset, uint32_t bitmask)
+static void bit_set(uint32_t reg, uint32_t bitmask)
 {
-    uint32_t reg_val = getreg32(reg + offset);
+    uint32_t reg_val = getreg32(reg);
     reg_val |= bitmask;
-    putreg32(reg_val, reg + offset);
+    putreg32(reg_val, reg);
 }
 
-static void bit_clr(uint32_t reg, uint32_t offset, uint32_t bitmask)
+static void bit_clr(uint32_t reg, uint32_t bitmask)
 {
-    uint32_t reg_val = getreg32(reg + offset);
+    uint32_t reg_val = getreg32(reg);
     reg_val &= ~bitmask;
-    putreg32(reg_val, reg + offset);
+    putreg32(reg_val, reg);
 }
 
 /**
@@ -531,7 +531,7 @@ static void sdhc_set_power(struct tsb_sdio_info *info,
     if (pwr != 0) {
         pwr |= SDHC_PWR_ON;
     }
-    
+
     putreg8(pwr, info->reg_base + SDHC_POWER_CTRL);
     info->cur_power = mode;
 }
@@ -795,8 +795,6 @@ static int sdhc_host_irq(int irq, void *context)
  */
 static void chip_init(void)
 {
-    uint32_t sysctl;
-
     /* Enable the 2 clock gating (sdioSysClk/sdioSdClk) */
     tsb_clk_enable(TSB_CLK_SDIOSYS);
     tsb_clk_enable(TSB_CLK_SDIOSD);
@@ -806,16 +804,14 @@ static void chip_init(void)
     tsb_reset(TSB_RST_SDIOSD);
 
     /* Assert the DLL enable */
-    sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
-    sysctl |= DLL_ENABLE;
-    putreg32(sysctl, SYSCTL_BASE + UHSSD_DLLCTRL);
+    bit_set(SYSCTL_BASE + UHSSD_DLLCTRL, DLL_ENABLE);
 
     /* Pull up clk and SDIO data interface pins */
-    bit_set(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
-    bit_set(SYSCTL_BASE, UHSSD_IO4CTRL, SDDATA3_PUENABLE);
-    bit_set(SYSCTL_BASE, UHSSD_IO5CTRL, SDDATA2_PUENABLE);
-    bit_set(SYSCTL_BASE, UHSSD_IO6CTRL, SDDATA1_PUENABLE);
-    bit_set(SYSCTL_BASE, UHSSD_IO7CTRL, SDDATA0_PUENABLE);
+    bit_set(SYSCTL_BASE + UHSSD_IO3CTRL, SDCMD_PUENABLE);
+    bit_set(SYSCTL_BASE + UHSSD_IO4CTRL, SDDATA3_PUENABLE);
+    bit_set(SYSCTL_BASE + UHSSD_IO5CTRL, SDDATA2_PUENABLE);
+    bit_set(SYSCTL_BASE + UHSSD_IO6CTRL, SDDATA1_PUENABLE);
+    bit_set(SYSCTL_BASE + UHSSD_IO7CTRL, SDDATA0_PUENABLE);
 
     /* Switch the pin share mode for SD Interfaces */
     tsb_set_pinshare(TSB_PIN_SDIO);
@@ -843,8 +839,6 @@ static void chip_init(void)
  */
 static void chip_deinit(void)
 {
-    uint32_t sysctl;
-
     /* sdcard detect pin configure */
     gpio_mask_irq(GPB2_SD_CD);
     gpio_deactivate(GPB2_SD_CD);
@@ -855,16 +849,14 @@ static void chip_deinit(void)
     gpio_direction_out(GPB2_SD_POWER_EN, 0);
 
     /* Pull down clk and SDIO data interface pins */
-    bit_clr(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
-    bit_clr(SYSCTL_BASE, UHSSD_IO4CTRL, SDDATA3_PUENABLE);
-    bit_clr(SYSCTL_BASE, UHSSD_IO5CTRL, SDDATA2_PUENABLE);
-    bit_clr(SYSCTL_BASE, UHSSD_IO6CTRL, SDDATA1_PUENABLE);
-    bit_clr(SYSCTL_BASE, UHSSD_IO7CTRL, SDDATA0_PUENABLE);
+    bit_clr(SYSCTL_BASE + UHSSD_IO3CTRL, SDCMD_PUENABLE);
+    bit_clr(SYSCTL_BASE + UHSSD_IO4CTRL, SDDATA3_PUENABLE);
+    bit_clr(SYSCTL_BASE + UHSSD_IO5CTRL, SDDATA2_PUENABLE);
+    bit_clr(SYSCTL_BASE + UHSSD_IO6CTRL, SDDATA1_PUENABLE);
+    bit_clr(SYSCTL_BASE + UHSSD_IO7CTRL, SDDATA0_PUENABLE);
 
     /* turn off sd host controoler dll */
-    sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
-    sysctl &= DLL_ENABLE;
-    putreg32(sysctl, SYSCTL_BASE + UHSSD_DLLCTRL);
+    bit_clr(SYSCTL_BASE + UHSSD_DLLCTRL, DLL_ENABLE);
 
     /* stop sd host controller clock */
     tsb_clk_disable(TSB_CLK_SDIOSYS);
