@@ -246,6 +246,9 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
     cmd.cmd_flags = request->cmd_flags;
     cmd.cmd_type = request->cmd_type;
     cmd.cmd_arg = le32_to_cpu(request->cmd_arg);
+    cmd.data_cmd = request->data_cmd;
+    cmd.data_blocks = le16_to_cpu(request->blocks);
+    cmd.data_blksz = le16_to_cpu(request->data_blksz);
     cmd.resp = resp;
 
     //lldbg("cmd:cmd = %d \n", cmd.cmd);

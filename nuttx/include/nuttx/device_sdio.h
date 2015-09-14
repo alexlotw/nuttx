@@ -108,6 +108,10 @@ struct sdio_cmd {
     /** SDIO command arguments, as specified by SD Association */
     uint32_t cmd_arg;
     /** SDIO command response */
+    uint16_t  data_cmd;
+    uint16_t  data_blocks;
+    uint16_t  data_blksz;
+
     uint32_t *resp;
 };
 
