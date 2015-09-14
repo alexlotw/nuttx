@@ -1253,7 +1253,7 @@ static int sdio_change_bus_width(struct sdio_ios *ios,
     case HC_SDIO_BUS_WIDTH_8:
         sdio_reg_bit_set(info->sdio_reg_base, HOST_PWR_BLKGAP_WAKEUP_CNTRL,
                          DATA_TRASFER_WIDTH);
-        lldbg(".......change to 4 bits");
+        //lldbg(".......change to 4 bits\n");
         break;
     default:
         return -EINVAL;
@@ -1772,7 +1772,7 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
     /* Set bus width */
     if (sdio_change_bus_width(ios, info)) {
         return -EINVAL;
-    } else {
+    } /*else {
 
         if (ios->bus_width == HC_SDIO_BUS_WIDTH_4) {
             struct sdio_cmd cmd;
@@ -1786,9 +1786,7 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
             
             tsb_sdio_send_cmd(dev, &cmd);
         }
-    }
-
-    
+    }*/
 
     /* Set timing */
     switch (ios->timing) {

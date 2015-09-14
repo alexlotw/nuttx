@@ -144,8 +144,8 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
      * Currently, the protocol buffer size must be under 1024 bytes, with the
      * buffer information, therefore only 512 bytes is allowed for one block.
      */
-    if (cap.max_blk_count * cap.max_blk_size > (3 * 512)) {
-        cap.max_blk_count = 3;
+    if (cap.max_blk_count * cap.max_blk_size > 1024) {
+        cap.max_blk_count = 1;
         cap.max_blk_size = 512;
     }
 
