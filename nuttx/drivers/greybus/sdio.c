@@ -149,6 +149,10 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
         cap.max_blk_size = 512;
     }
 
+    //cap.max_blk_count = 60000;
+    cap.max_blk_count = 1;
+    cap.max_blk_size = 512;
+
     cap.ocr = 0xFFFFFFFF;
     response->caps = cpu_to_le32(cap.caps);
     response->ocr = cpu_to_le32(cap.ocr);
@@ -247,7 +251,7 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
     cmd.cmd_type = request->cmd_type;
     cmd.cmd_arg = le32_to_cpu(request->cmd_arg);
     cmd.data_cmd = request->data_cmd;
-    cmd.data_blocks = le16_to_cpu(request->blocks);
+    cmd.data_blocks = le16_to_cpu(request->data_blocks);
     cmd.data_blksz = le16_to_cpu(request->data_blksz);
     cmd.resp = resp;
 

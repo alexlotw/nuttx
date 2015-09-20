@@ -760,6 +760,9 @@ struct tsb_sdio_info {
     uint16_t app_cmd;
     uint16_t data_cmd;
     uint16_t data_flags;
+
+    uint32_t ier;
+    uint32_t data_int;
 };
 
 static struct device *sdio_dev = NULL;
@@ -767,6 +770,19 @@ static struct device *sdio_dev = NULL;
 /*
  * SDHCI support functions
  */
+static uint8_t sdhci_readb(uint32_t base, uint32_t offset)
+{
+    uint8_t *datap = (uint8_t*) (base + offset);
+    return *datap;
+}
+
+static void sdhci_writeb(uint32_t base, uint8_t value, uint32_t offset)
+{
+    uint8_t *datap = (uint8_t*) (base + offset);
+
+    *datap = value;
+}
+
 static uint16_t sdhci_readw(uint32_t base, uint32_t offset)
 {
     uint16_t *datap = (uint16_t*) (base + offset);
@@ -1251,8 +1267,16 @@ static int sdio_change_bus_width(struct sdio_ios *ios,
         break;
     case HC_SDIO_BUS_WIDTH_4:
     case HC_SDIO_BUS_WIDTH_8:
-        sdio_reg_bit_set(info->sdio_reg_base, HOST_PWR_BLKGAP_WAKEUP_CNTRL,
+        /*sdio_reg_bit_set(info->sdio_reg_base, HOST_PWR_BLKGAP_WAKEUP_CNTRL,
                          DATA_TRASFER_WIDTH);
+        */
+        {
+            uint8_t ctrl;
+            ctrl = sdhci_readb(info->sdio_reg_base, SDHCI_HOST_CONTROL);
+            ctrl |= SDHCI_CTRL_4BITBUS;
+            sdhci_writeb(info->sdio_reg_base, ctrl, SDHCI_HOST_CONTROL);
+        }
+        
         //lldbg(".......change to 4 bits\n");
         break;
     default:
@@ -1289,6 +1313,9 @@ static int sdio_error_interrupt_recovery(struct tsb_sdio_info *info)
     uint32_t dat_line_err = DATA_END_BIT_ERROR | DATA_CRC_ERROR |
                             DATA_TIMEOUT_ERROR;
     uint8_t retry = 0;
+
+    lldbg("sdio_error_interrupt_recovery \n");
+    //sdio_dump_int_status_registers(info);
 
     /* Disable Error Interrupt Signal */
     sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_STATUS_EN,
@@ -1380,11 +1407,25 @@ int sdio_irq_event(int irq, void *context)
     } else { /* Card insert */
         /* Recover error interrupt if have */
         sdio_error_interrupt_recovery(info);
+
+        {
+            uint8_t mask = SDHCI_RESET_CMD | SDHCI_RESET_DATA;
+            sdhci_writeb(info->sdio_reg_base, mask, SDHCI_SOFTWARE_RESET);
+
+            while (sdhci_readb(info->sdio_reg_base, SDHCI_SOFTWARE_RESET) & mask) {
+                lldbg("cmd & data software reset..\n");
+            };    
+        }
+        
         /* Enable command interrupts */
         sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS_EN,
                          CMD_TIMEOUT_ERR_STAT_EN | CMD_COMPLETE_STAT_EN);
         sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
                          CMD_TIMEOUT_ERR_EN | CMD_COMPLETE_EN);
+
+        sdhci_writel(info->sdio_reg_base, info->ier, SDHCI_INT_ENABLE);
+        sdhci_writel(info->sdio_reg_base, info->ier, SDHCI_SIGNAL_ENABLE);
+                         
         sdio_enable_bus_power(info);
         sdio_reg_bit_set(info->sdio_reg_base, CLOCK_SWRST_TIMEOUT_CONTROL,
                          SD_CLOCK_ENABLE);
@@ -1475,6 +1516,56 @@ static int sdio_irq_handler(int irq, void *context)
             info->resp[3] = resp_temp[3];
         }
         sem_post(&info->cmd_sem);
+    }
+
+    if (int_err_status & SDHCI_INT_BUS_POWER) {
+        lldbg("SDHCI_INT_BUS_POWER \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_BUS_POWER);
+    }
+
+    if (int_err_status & SDHCI_INT_DATA_END_BIT) {
+        lldbg("SDHCI_INT_DATA_END_BIT \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_DATA_END_BIT);
+    }
+    
+    if (int_err_status & SDHCI_INT_DATA_CRC) {
+        lldbg("SDHCI_INT_DATA_CRC \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_DATA_CRC);
+    }
+
+    if (int_err_status & SDHCI_INT_DATA_TIMEOUT) {
+        lldbg("SDHCI_INT_DATA_TIMEOUT \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_DATA_TIMEOUT);
+    }
+
+    if (int_err_status & SDHCI_INT_INDEX) {
+        lldbg("SDHCI_INT_INDEX \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_INDEX);
+    }
+
+    if (int_err_status & SDHCI_INT_END_BIT) {
+        lldbg("SDHCI_INT_END_BIT \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_END_BIT);
+    }
+
+    if (int_err_status & SDHCI_INT_CRC) {
+        lldbg("SDHCI_INT_CRC \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_CRC);
+    }
+
+    if (int_err_status & SDHCI_INT_TIMEOUT) {
+        lldbg("SDHCI_INT_TIMEOUT \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_TIMEOUT);
+    }
+
+    if (int_err_status & SDHCI_INT_DATA_END) {
+        lldbg("SDHCI_INT_DATA_END \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_DATA_END);
+    }
+
+    if (int_err_status & SDHCI_INT_RESPONSE) {
+        lldbg("SDHCI_INT_RESPONSE \n");
+        sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS, SDHCI_INT_RESPONSE);
     }
 
     return 0;
@@ -1772,7 +1863,7 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
     /* Set bus width */
     if (sdio_change_bus_width(ios, info)) {
         return -EINVAL;
-    } /*else {
+    } /*else { // workaround for first CMD17 error
 
         if (ios->bus_width == HC_SDIO_BUS_WIDTH_4) {
             struct sdio_cmd cmd;
@@ -1783,6 +1874,10 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
             cmd.cmd_type = 0x01;
             cmd.cmd_arg = 0;
             cmd.resp = resp;
+            cmd.data_cmd = 1;
+            cmd.data_blocks = 0;
+            cmd.data_blksz = 0;
+            cmd.data_blksz = 0;
             
             tsb_sdio_send_cmd(dev, &cmd);
         }
@@ -1871,7 +1966,7 @@ static void set_transfer_mode(struct device *dev, struct sdio_cmd *cmd)
     uint16_t mode = 0;
 
     if (cmd->cmd == HC_MMC_READ_MULTIPLE_BLOCK ||
-        cmd->cmd == HC_MMC_WRITE_MULTIPLE_BLOCK || info->blocks > 1) {
+        cmd->cmd == HC_MMC_WRITE_MULTIPLE_BLOCK || cmd->data_blocks > 1) {
 
         mode = SDHCI_TRNS_BLK_CNT_EN | SDHCI_TRNS_MULTI;
         
@@ -1879,6 +1974,7 @@ static void set_transfer_mode(struct device *dev, struct sdio_cmd *cmd)
             mode |= SDHCI_TRNS_AUTO_CMD12;
         }
         else if (cmd->cmd_flags & SDHCI_AUTO_CMD23) {
+            lldbg("************************************************\n");
             sdhci_writel(info->sdio_reg_base, cmd->cmd_arg, SDHCI_ARGUMENT2);
         }
     }
@@ -1893,41 +1989,42 @@ static void cmd_parser(struct device *dev, struct sdio_cmd *cmd)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
     uint16_t app_cmd = info->app_cmd;
+
     
     if (app_cmd && (cmd->cmd == HC_SD_APP_SEND_SCR)) { // CMD51
-        info->data_cmd = 1;
-        info->blocks = 1;
-        info->blksz = 8;
+        //info->data_cmd = 1;
+        //info->blocks = 1;
+        //info->blksz = 8;
         info->data_flags = MMC_DATA_READ;
     } else if (app_cmd && (cmd->cmd == HC_MMC_SEND_STATUS)) { // CMD13
-        info->data_cmd = 1;
-        info->blocks = 1;
-        info->blksz = 64;
+        //info->data_cmd = 1;
+        //info->blocks = 1;
+        //info->blksz = 64;
         info->data_flags = MMC_DATA_READ;
     } else if (!app_cmd && (cmd->cmd == HC_MMC_SWITCH)) { // CMD6
-        info->data_cmd = 1;
-        info->blocks = 1;
-        info->blksz = 64;
+        //info->data_cmd = 1;
+        //info->blocks = 1;
+        //info->blksz = 64;
         info->data_flags = MMC_DATA_READ;
-    } else if (cmd->cmd == HC_MMC_SET_BLOCKLEN) { // CMD16
+    /*} else if (cmd->cmd == HC_MMC_SET_BLOCKLEN) { // CMD16
         info->blksz = (uint16_t)cmd->cmd_arg;
     } else if (cmd->cmd == HC_MMC_SET_BLOCK_COUNT) { // CMD23
-        info->blocks = (uint16_t)cmd->cmd_arg;
+        info->blocks = (uint16_t)cmd->cmd_arg;*/
     } else if (cmd->cmd == HC_MMC_READ_SINGLE_BLOCK) { // CMD17
-        info->data_cmd = 1;
-        info->blocks = 1;
-        info->blksz = 512;
+        //info->data_cmd = 1;
+        //info->blocks = 1;
+        //info->blksz = 512;
         info->data_flags = MMC_DATA_READ;
     } else if (cmd->cmd == HC_MMC_READ_MULTIPLE_BLOCK) { // CMD18
-        info->data_cmd = 1;
+        //info->data_cmd = 1;
         info->data_flags = MMC_DATA_READ;
     } else if (cmd->cmd == HC_MMC_WRITE_BLOCK) { // CMD24
-        info->data_cmd = 1;
-        info->blocks = 1;
-        info->blksz = 512;
+        //info->data_cmd = 1;
+        //info->blocks = 1;
+        //info->blksz = 512;
         info->data_flags = MMC_DATA_WRITE;
     } else if (cmd->cmd == HC_MMC_WRITE_MULTIPLE_BLOCK) { // CMD25
-        info->data_cmd = 1;
+        //info->data_cmd = 1;
         info->data_flags = MMC_DATA_WRITE;
     } else if (cmd->cmd == 100) { // CMD17 for workaround
         cmd->cmd = 17;
@@ -1961,11 +2058,24 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
     cmd_parser(dev, cmd);
 
     /* Enable command interrupts */
+    
     sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS_EN,
                      CMD_TIMEOUT_ERR_STAT_EN | CMD_COMPLETE_STAT_EN);
     sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
                      CMD_TIMEOUT_ERR_EN |CMD_COMPLETE_EN);
+    
 
+    /*{
+        uint32_t mask = SDHCI_INT_DATA_END_BIT |
+                SDHCI_INT_DATA_CRC | SDHCI_INT_DATA_TIMEOUT |
+                SDHCI_INT_END_BIT | SDHCI_INT_CRC |
+                SDHCI_INT_TIMEOUT | SDHCI_INT_DATA_END |
+                SDHCI_INT_RESPONSE;
+
+        sdhci_writel(info->sdio_reg_base, mask, SDHCI_INT_ENABLE);
+        sdhci_writel(info->sdio_reg_base, mask, SDHCI_SIGNAL_ENABLE);
+    }*/
+    
     /* Wait for CMD Line unused */
     while ((sdio_getreg(info->sdio_reg_base, PRESENTSTATE) &
            COMMAND_INHIBIT_CMD) && (retry < REGISTER_MAX_RETRY)) {
@@ -1980,19 +2090,28 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
     /*
      * prepare data information
      */
-    if (info->data_cmd) {
+    if (cmd->data_cmd) {
+        uint32_t int_reg;
         //lldbg("cmd with data\n");
-        //sdhci_writel(info->sdio_reg_base,
-        //             (SDHCI_INT_DATA_AVAIL | SDHCI_INT_SPACE_AVAIL),
-        //             SDHCI_INT_ENABLE);
-        //sdhci_writel(info->sdio_reg_base,
-        //             (SDHCI_INT_DATA_AVAIL | SDHCI_INT_SPACE_AVAIL),
-        //             SDHCI_SIGNAL_ENABLE);
 
-        sdhci_writew(info->sdio_reg_base, info->blksz, SDHCI_BLOCK_SIZE);
-        sdhci_writew(info->sdio_reg_base, info->blocks, SDHCI_BLOCK_COUNT);
+        int_reg = sdhci_readl(info->sdio_reg_base, SDHCI_INT_ENABLE);
 
-        lldbg(">> data: size(%d), blocks(%d) \n", info->blksz, info->blocks);
+        int_reg |= (SDHCI_INT_DATA_AVAIL | SDHCI_INT_SPACE_AVAIL);
+
+        int_reg |= SDHCI_INT_DATA_END_BIT | SDHCI_INT_DATA_CRC |
+                   SDHCI_INT_DATA_TIMEOUT | SDHCI_INT_END_BIT |
+                   SDHCI_INT_CRC | SDHCI_INT_TIMEOUT | SDHCI_INT_DATA_END |
+                   SDHCI_INT_RESPONSE;
+        
+        sdhci_writel(info->sdio_reg_base, int_reg, SDHCI_INT_ENABLE);
+        sdhci_writel(info->sdio_reg_base, int_reg, SDHCI_SIGNAL_ENABLE);
+
+        sdhci_writew(info->sdio_reg_base, cmd->data_blksz, SDHCI_BLOCK_SIZE);
+        sdhci_writew(info->sdio_reg_base, cmd->data_blocks, SDHCI_BLOCK_COUNT);
+
+        sdhci_writeb(info->sdio_reg_base, 0x03, SDHCI_TIMEOUT_CONTROL);
+
+        lldbg(">> data: size(%d), blocks(%d) \n", cmd->data_blksz, cmd->data_blocks);
     }
 
     //lldbg("test 1\n");
@@ -2015,6 +2134,8 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
     }
 
     //lldbg("test 2\n");
+
+    
     
     /* Set Argument 1 Reg register */
     sdio_putreg(info->sdio_reg_base, ARGUMENT1, cmd->cmd_arg);
@@ -2035,11 +2156,25 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 	if (cmd->cmd_flags & MMC_RSP_OPCODE)
 		cmd_flags |= SDHCI_CMD_INDEX;
 
-    if (info->data_cmd) {
+    if (cmd->data_cmd) {
         cmd_flags |= SDHCI_CMD_DATA;
     }
 
-    //lldbg("test 3 cmd = 0x%04x \n", SDHCI_MAKE_CMD(cmd->cmd, cmd_flags));
+    lldbg("cmd = 0x%04x \n", SDHCI_MAKE_CMD(cmd->cmd, cmd_flags));
+
+    if (cmd->cmd == 17) {
+        //sdhci_writel(info->sdio_reg_base, 0, SDHCI_DMA_ADDRESS);
+            /*{
+                uint8_t mask = SDHCI_RESET_DATA;
+                sdhci_writeb(info->sdio_reg_base, mask, SDHCI_SOFTWARE_RESET);
+
+                while (sdhci_readb(info->sdio_reg_base, SDHCI_SOFTWARE_RESET) & mask) {
+                    lldbg("data software reset..\n");
+                };    
+            }*/
+        
+        //sdio_dump_registers(info);
+    }
 
     sdhci_writew(info->sdio_reg_base, SDHCI_MAKE_CMD(cmd->cmd, cmd_flags),
                  SDHCI_COMMAND);
@@ -2127,7 +2262,7 @@ static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
 
-    //lldbg("tsb_sdio_read() \n");
+    lldbg("tsb_sdio_read()+ block = %d, blksz = %d \n", transfer->blocks, transfer->blksz);
 
     //sdio_dump_registers(info);
 
@@ -2152,6 +2287,8 @@ static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
     } else { /* Non-blocking */
         sem_post(&info->read_sem);
     }
+
+    lldbg("tsb_sdio_read()- \n");
 
     return 0;
 }
@@ -2232,10 +2369,22 @@ static int tsb_sdio_dev_open(struct device *dev)
     /* Card is inserted before SDIO device open. */
     if (!value) {
         /* Enable command interrupts */
+        /*
         sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS_EN,
                          CMD_TIMEOUT_ERR_STAT_EN | CMD_COMPLETE_STAT_EN);
         sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
                          CMD_TIMEOUT_ERR_EN | CMD_COMPLETE_EN);
+        */
+
+        info->ier = SDHCI_INT_BUS_POWER | SDHCI_INT_DATA_END_BIT |
+                SDHCI_INT_DATA_CRC | SDHCI_INT_DATA_TIMEOUT |
+                SDHCI_INT_INDEX | SDHCI_INT_END_BIT | SDHCI_INT_CRC |
+                SDHCI_INT_TIMEOUT | SDHCI_INT_DATA_END |
+                SDHCI_INT_RESPONSE;
+
+        sdhci_writel(info->sdio_reg_base, info->ier, SDHCI_INT_ENABLE);
+        sdhci_writel(info->sdio_reg_base, info->ier, SDHCI_SIGNAL_ENABLE);
+        
         sdio_enable_bus_power(info);
         sdio_reg_bit_set(info->sdio_reg_base, CLOCK_SWRST_TIMEOUT_CONTROL,
                          SD_CLOCK_ENABLE);
@@ -2285,13 +2434,20 @@ static void tsb_sdio_dev_close(struct device *dev)
     info->pre_card_event = HC_SDIO_CARD_REMOVED;
 
     /* Disable command interrupts */
-    sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_STATUS_EN,
+    /*sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_STATUS_EN,
                      CARD_INTERRUPT_STAT_EN);
     sdio_reg_bit_clr(info->sdio_reg_base, INT_ERR_SIGNAL_EN,
                      CARD_INTERRUPT_EN);
-    sdio_disable_bus_power(info);
+    */
+	sdhci_writel(info->sdio_reg_base, 0, SDHCI_INT_ENABLE);
+	sdhci_writel(info->sdio_reg_base, 0, SDHCI_SIGNAL_ENABLE);
+
+    sdhci_writel(info->sdio_reg_base, 0, SDHCI_DMA_ADDRESS);
+    
     sdio_reg_bit_clr(info->sdio_reg_base, CLOCK_SWRST_TIMEOUT_CONTROL,
                      SD_CLOCK_ENABLE);
+
+    sdio_disable_bus_power(info);
 
     info->thread_abort = true;
     sem_post(&info->read_sem);
@@ -2437,15 +2593,20 @@ static void tsb_sdio_dev_remove(struct device *dev)
     flags = irqsave();
     up_disable_irq(info->sdio_irq);
     irq_detach(info->sdio_irq);
+    
     sem_destroy(&info->read_sem);
     sem_destroy(&info->write_sem);
     sem_destroy(&info->cmd_sem);
+
     gpio_unmask_irq(GPB2_SD_CD);
     gpio_deactivate(GPB2_SD_CD);
     irqrestore(flags);
+
     sdio_reg_bit_clr(SYSCTL_BASE, UHSSD_DLLCTRL, DLL_ENABLE);
+
     tsb_clk_disable(TSB_CLK_SDIOSYS);
     tsb_clk_disable(TSB_CLK_SDIOSD);
+
     free(info);
     sdio_dev = NULL;
     device_set_private(dev, NULL);
