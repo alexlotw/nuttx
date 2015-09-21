@@ -1408,14 +1408,14 @@ int sdio_irq_event(int irq, void *context)
         /* Recover error interrupt if have */
         sdio_error_interrupt_recovery(info);
 
-        {
+        /*{
             uint8_t mask = SDHCI_RESET_CMD | SDHCI_RESET_DATA;
             sdhci_writeb(info->sdio_reg_base, mask, SDHCI_SOFTWARE_RESET);
 
             while (sdhci_readb(info->sdio_reg_base, SDHCI_SOFTWARE_RESET) & mask) {
                 lldbg("cmd & data software reset..\n");
             };    
-        }
+        }*/
         
         /* Enable command interrupts */
         sdio_reg_bit_set(info->sdio_reg_base, INT_ERR_STATUS_EN,
@@ -1689,15 +1689,21 @@ static void sdio_read_fifo_data(struct tsb_sdio_info *info)
                 }
                 info->read_buf.head = info->read_buf.tail;
             }
-
+            
             /* More blocks? */
             if (info->read_buf.head == info->read_buf.tail) { /* No */
+                lldbg("buffer full ...\n");
                 if (info->read_callback) { /* Non-blocking */
                     info->flags &= ~SDIO_FLAG_READ;
                     info->read_callback(info->read_buf.head, info->blksz,
                                         info->read_buf.buffer, 0);
+                } else {
+                    lldbg("stop read ....\n");
+                    break;
                 }
             }
+
+            lldbg("remaining = %d \n", remaining);
         }
         presentstate = sdio_getreg(info->sdio_reg_base, PRESENTSTATE);
         //lldbg("-presentstate = 0x%08p \n", presentstate);

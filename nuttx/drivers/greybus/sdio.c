@@ -150,6 +150,7 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
     }
 
     //cap.max_blk_count = 60000;
+    //cap.max_blk_count = 65535;
     cap.max_blk_count = 1;
     cap.max_blk_size = 512;
 
