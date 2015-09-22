@@ -135,7 +135,7 @@
 #define SDHC_AUTOCMD12_ERR          0x3C
 #define SDHC_CAPABILITIES           0x40
  #define SDHC_CAP_BASE_CLK_SHIFT    8
- #define SDHC_CAP_BASE_CLK_MASK     0x3F00;
+ #define SDHC_CAP_BASE_CLK_MASK     0xFF00;
  
 #define CMD_INT_MASK  (SDHC_INT_CMD_CMPLT)
 
@@ -461,7 +461,7 @@ err_data_read:
  */
 static void sdhc_set_clock(uint32_t base, uint32_t clock)
 {
-    uint16_t clk_val;
+    uint16_t clk_val, retry;
     uint32_t tsb_base_div, clk;
     
     write_word(base, 0, SDHC_CLOCK_CTRL);
@@ -469,11 +469,22 @@ static void sdhc_set_clock(uint32_t base, uint32_t clock)
     clk = read_word(base, SDHC_CAPABILITIES);
     tsb_base_div = (clk & SDHC_CAP_BASE_CLK_MASK) >> SDHC_CAP_BASE_CLK_SHIFT;
     
-    clk_val = calc_divisor(tsb_base_div, clock);
-    
+    clk_val = calc_divisor(tsb_base_div, clock) / 2;
     clk_val <<= SDHC_DIV_SHIFT;
+
     clk_val |= SDHC_SD_CLK_EN;
-    
+    write_word(base, clk_val, SDHC_CLOCK_CTRL);
+    retry = 10;
+    while (!(read_word(base, SDHC_CLOCK_CTRL) & SDHC_CLK_STABLE)) {
+        usleep(1000);
+        retry--;
+        if (retry) {
+            break;
+        }
+    }
+
+    clk_val |= SDHC_SD_CLK_EN
+    write_word(base, clk_val, SDHC_CLOCK_CTRL);
 }
 
 /**
