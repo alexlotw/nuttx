@@ -70,6 +70,7 @@
  * SD card/SDIO registers. The base is 0x40019000
  */
 #define SDHC_SDMASYSADDR            0x00
+#define SDHC_ARGUMENT2              0x00
 #define SDHC_BLOCK_SIZE             0x04
 #define SDHC_BLOCK_COUNT            0x06
 #define SDHC_ARGUMENT               0x08
@@ -147,9 +148,9 @@
  #define SDHC_CAP_TIMEOUT_MASK      0x2F
  #define SDHC_CAP_TO_UINT_MASK      0x80
  #define SDHC_CAP_BASE_CLK_SHIFT    8
- #define SDHC_CAP_BASE_CLK_MASK     0xFF;
+ #define SDHC_CAP_BASE_CLK_MASK     0xFF
  #define SDHC_CAP_MAX_BLK_SHIFT     16
- #define SDHC_CAP_MAX_BLK_MASK      0x03;
+ #define SDHC_CAP_MAX_BLK_MASK      0x03
  #define SDHC_CAP_MAX_BLK_512       0
  #define SDHC_CAP_MAX_BLK_1024      1
  #define SDHC_CAP_MAX_BLK_2048      2
@@ -159,7 +160,7 @@
 #define CMD_ERR_MASK  (SDHC_ERR_CMD_TIMEOUT | SDHC_ERR_CMD_CRC | \
                        SDHC_ERR_CMD_END_BIT | SDHC_ERR_CMD_INDEX)
 
-#define DATA_INT_MASK (SDHCI_INT_DATA_END)
+#define DATA_INT_MASK (SDHC_INT_DATA_END)
 
 #define DATA_ERR_MASK (SDHC_ERR_DATA_TIMEOUT | SDHC_ERR_DATA_CRC | \
                        SDHC_ERR_DATA_END_BIT)
@@ -221,43 +222,54 @@
 #define MMC_VDD_34_35       0x00400000  /* VDD voltage 3.4 ~ 3.5 */
 #define MMC_VDD_35_36       0x00800000  /* VDD voltage 3.5 ~ 3.6 */
 
-#define MMC_CAP_4_BIT_DATA	    BIT(0)
-#define MMC_CAP_MMC_HIGHSPEED	BIT(1)
-#define MMC_CAP_SD_HIGHSPEED	BIT(2)
-#define MMC_CAP_SDIO_IRQ	    BIT(3)
-#define MMC_CAP_SPI		        BIT(4)
-#define MMC_CAP_NEEDS_POLL	    BIT(5)
-#define MMC_CAP_8_BIT_DATA	    BIT(6)
-#define MMC_CAP_AGGRESSIVE_PM	BIT(7)
-#define MMC_CAP_NONREMOVABLE	BIT(8)
-#define MMC_CAP_WAIT_WHILE_BUSY	BIT(9)
-#define MMC_CAP_ERASE		    BIT(10)
-#define MMC_CAP_1_8V_DDR	    BIT(11)
-#define MMC_CAP_1_2V_DDR	    BIT(12)
-#define MMC_CAP_POWER_OFF_CARD	BIT(13)
-#define MMC_CAP_BUS_WIDTH_TEST	BIT(14)
-#define MMC_CAP_UHS_SDR12	    BIT(15)
-#define MMC_CAP_UHS_SDR25	    BIT(16)
-#define MMC_CAP_UHS_SDR50	(1 << 17)	/* Host supports UHS SDR50 mode */
-#define MMC_CAP_UHS_SDR104	(1 << 18)	/* Host supports UHS SDR104 mode */
-#define MMC_CAP_UHS_DDR50	(1 << 19)	/* Host supports UHS DDR50 mode */
-#define MMC_CAP_RUNTIME_RESUME	(1 << 20)	/* Resume at runtime_resume. */
-#define MMC_CAP_DRIVER_TYPE_A	(1 << 23)	/* Host supports Driver Type A */
-#define MMC_CAP_DRIVER_TYPE_C	(1 << 24)	/* Host supports Driver Type C */
-#define MMC_CAP_DRIVER_TYPE_D	(1 << 25)	/* Host supports Driver Type D */
-#define MMC_CAP_CMD23		(1 << 30)	/* CMD23 supported. */
-#define MMC_CAP_HW_RESET	(1 << 31)	/* Hardware reset */
+#define MMC_CAP_4_BIT_DATA      BIT(0)
+#define MMC_CAP_MMC_HIGHSPEED   BIT(1)
+#define MMC_CAP_SD_HIGHSPEED    BIT(2)
+#define MMC_CAP_SDIO_IRQ        BIT(3)
+#define MMC_CAP_SPI             BIT(4)
+#define MMC_CAP_NEEDS_POLL      BIT(5)
+#define MMC_CAP_8_BIT_DATA      BIT(6)
+#define MMC_CAP_AGGRESSIVE_PM   BIT(7)
+#define MMC_CAP_NONREMOVABLE    BIT(8)
+#define MMC_CAP_WAIT_WHILE_BUSY BIT(9)
+#define MMC_CAP_ERASE           BIT(10)
+#define MMC_CAP_1_8V_DDR        BIT(11)
+#define MMC_CAP_1_2V_DDR        BIT(12)
+#define MMC_CAP_POWER_OFF_CARD  BIT(13)
+#define MMC_CAP_BUS_WIDTH_TEST  BIT(14)
+#define MMC_CAP_UHS_SDR12       BIT(15)
+#define MMC_CAP_UHS_SDR25       BIT(16)
+#define MMC_CAP_UHS_SDR50   (1 << 17)   /* Host supports UHS SDR50 mode */
+#define MMC_CAP_UHS_SDR104  (1 << 18)   /* Host supports UHS SDR104 mode */
+#define MMC_CAP_UHS_DDR50   (1 << 19)   /* Host supports UHS DDR50 mode */
+#define MMC_CAP_RUNTIME_RESUME  (1 << 20)   /* Resume at runtime_resume. */
+#define MMC_CAP_DRIVER_TYPE_A   (1 << 23)   /* Host supports Driver Type A */
+#define MMC_CAP_DRIVER_TYPE_C   (1 << 24)   /* Host supports Driver Type C */
+#define MMC_CAP_DRIVER_TYPE_D   (1 << 25)   /* Host supports Driver Type D */
+#define MMC_CAP_CMD23       (1 << 30)   /* CMD23 supported. */
+#define MMC_CAP_HW_RESET    (1 << 31)   /* Hardware reset */
+
+/* response type */
+#define MMC_RSP_PRESENT (1 << 0)
+#define MMC_RSP_136 (1 << 1)        /* 136 bit response */
+#define MMC_RSP_CRC (1 << 2)        /* expect valid crc */
+#define MMC_RSP_BUSY    (1 << 3)        /* card may send busy */
+#define MMC_RSP_OPCODE  (1 << 4)        /* response contains opcode */
 
 /*
  * Command to prepare
- */ 
-#define MMC_SWITCH                  6 
+ */
+#define MMC_SWITCH                  6
 #define MMC_SEND_STATUS             13
 #define MMC_READ_SINGLE_BLOCK       17
 #define MMC_READ_MULTIPLE_BLOCK     18
 #define MMC_WRITE_BLOCK             24
-#define MMC_WRITE_MULTIPLE_BLOCK    25 
+#define MMC_WRITE_MULTIPLE_BLOCK    25
 #define SD_APP_SEND_SCR             51
+
+/* SDIO GPIO definition */
+#define GPB2_SD_POWER_EN 9
+#define GPB2_SD_CD       22
 
 /*
  * other definition
@@ -286,7 +298,7 @@ struct tsb_sdio_info {
     /** Host controller state */
     uint32_t flags;
     /** SDIO IRQ number */
-    int sdio_irq;
+    int sdhc_irq;
     /** SDIO register base */
     uint32_t reg_base;
     /** command error */
@@ -323,9 +335,29 @@ struct tsb_sdio_info {
     uint32_t base_clock;
     /** sd host controller timeout clock */
     uint32_t timeout_clock;
+    /** current clock */
+    uint32_t cur_clock;
+    /** current power state */
+    uint32_t cur_power;
+    /** current bus width */
+    uint32_t cur_bus_width;
 };
 
 static struct device *sdio_dev = NULL;
+
+static void bit_set(uint32_t reg, uint32_t offset, uint32_t bitmask)
+{
+    uint32_t reg_val = getreg32(reg + offset);
+    reg_val |= bitmask;
+    putreg32(reg + offset, reg_val);
+}
+
+static void bit_clr(uint32_t reg, uint32_t offset, uint32_t bitmask)
+{
+    uint32_t reg_val = getreg32(reg + offset);
+    reg_val &= ~bitmask;
+    putreg32(reg + offset, reg_val);
+}
 
 /**
  * @brief Read byte data from address
@@ -351,7 +383,6 @@ static uint8_t read_byte(uint32_t base, uint32_t offset)
 static void write_byte(uint32_t base, uint8_t value, uint32_t offset)
 {
     uint8_t *datap = (uint8_t*) (base + offset);
-
     *datap = value;
 }
 
@@ -379,7 +410,6 @@ static uint16_t read_word(uint32_t base, uint32_t offset)
 static void write_word(uint32_t base, uint16_t value, uint32_t offset)
 {
     uint16_t *datap = (uint16_t*) (base + offset);
-
     *datap = value;
 }
 
@@ -407,96 +437,9 @@ static uint32_t read_long(uint32_t base, uint32_t offset)
 static void write_long(uint32_t base, uint32_t value, uint32_t offset)
 {
     uint32_t *datap = (uint32_t*) (base + offset);
-
     *datap = value;
 }
 
-/**
- * @brief
- *
- * @param
- * @param
- * @param
- * @return
- */
-static void chip_init(void)
-{
-    uint32_t sysctl;
-    
-    /* Enable the 2 clock gating (sdioSysClk/sdioSdClk) */
-    tsb_clk_enable(TSB_CLK_SDIOSYS);
-    tsb_clk_enable(TSB_CLK_SDIOSD);
-
-    /* Reset the host controller */
-    tsb_reset(TSB_RST_SDIOSYS);
-    tsb_reset(TSB_RST_SDIOSD);
-
-    /* Assert the DLL enable */
-    sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
-    sysctl |= DLL_ENABLE;
-    setreg32(SYSCTL_BASE + UHSSD_DLLCTRL, sysctl);
-
-    /* Pull up clk and SDIO data interface pins */
-    sdio_reg_bit_set(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
-    sdio_reg_bit_set(SYSCTL_BASE, UHSSD_IO4CTRL, SDDATA3_PUENABLE);
-    sdio_reg_bit_set(SYSCTL_BASE, UHSSD_IO5CTRL, SDDATA2_PUENABLE);
-    sdio_reg_bit_set(SYSCTL_BASE, UHSSD_IO6CTRL, SDDATA1_PUENABLE);
-    sdio_reg_bit_set(SYSCTL_BASE, UHSSD_IO7CTRL, SDDATA0_PUENABLE);
-
-    /* Switch the pin share mode for SD Interfaces */
-    tsb_set_pinshare(TSB_PIN_SDIO);
-
-    /* Switch the pin share mode and pin high for GPB2_SD_POWER_EN pin */
-    tsb_set_pinshare(TSB_PIN_GPIO9);
-    gpio_activate(TSB_PIN_GPIO9);
-    gpio_direction_out(GPB2_SD_POWER_EN, 1);
-
-    /* SD CD pin and interrupt handler initialization */
-    tsb_set_pinshare(TSB_PIN_GPIO22);
-    gpio_activate(GPB2_SD_CD);
-    gpio_direction_in(GPB2_SD_CD);
-    set_gpio_triggering(GPB2_SD_CD, IRQ_TYPE_EDGE_BOTH);
-    gpio_irqattach(GPB2_SD_CD, sdhc_card_detect_irq);
-
-}
-
-/**
- * @brief
- *
- * @param
- * @param
- * @param
- * @return
- */
-static void chip_deinit(void)
-{
-    uint32_t sysctl;
-
-    /* sdcard detect pin configure */
-    gpio_mask_irq(GPB2_SD_CD);
-    gpio_deactivate(GPB2_SD_CD);
-
-    /* Switch the pin share mode and pin low for GPB2_SD_POWER_EN pin */
-    tsb_set_pinshare(TSB_PIN_GPIO9);
-    gpio_activate(TSB_PIN_GPIO9);
-    gpio_direction_out(GPB2_SD_POWER_EN, 0);
-
-    /* Pull down clk and SDIO data interface pins */
-    sdio_reg_bit_clr(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
-    sdio_reg_bit_clr(SYSCTL_BASE, UHSSD_IO4CTRL, SDDATA3_PUENABLE);
-    sdio_reg_bit_clr(SYSCTL_BASE, UHSSD_IO5CTRL, SDDATA2_PUENABLE);
-    sdio_reg_bit_clr(SYSCTL_BASE, UHSSD_IO6CTRL, SDDATA1_PUENABLE);
-    sdio_reg_bit_clr(SYSCTL_BASE, UHSSD_IO7CTRL, SDDATA0_PUENABLE);
-
-    /* turn off sd host controoler dll */
-    sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
-    sysctl &= DLL_ENABLE;
-    setreg32(SYSCTL_BASE + UHSSD_DLLCTRL, sysctl);
-
-    /* stop sd host controller clock */
-    tsb_clk_disable(TSB_CLK_SDIOSYS);
-    tsb_clk_disable(TSB_CLK_SDIOSD);        
-}
 
 /**
  * @brief
@@ -551,28 +494,27 @@ static void convert_rsp_136(uint32_t base, uint32_t *resp)
  * @param
  * @return
  */
-static void set_transfer_mode(struct device *dev, struct sdio_cmd *cmd)
+static void set_transfer_mode(struct tsb_sdio_info *info, struct sdio_cmd *cmd)
 {
-    struct tsb_sdio_info *info = device_get_private(dev);
     uint16_t mode = 0;
 
-    if (cmd->cmd == HC_MMC_READ_MULTIPLE_BLOCK ||
-        cmd->cmd == HC_MMC_WRITE_MULTIPLE_BLOCK || cmd->data_blocks > 1) {
+    if (cmd->cmd == MMC_READ_MULTIPLE_BLOCK ||
+        cmd->cmd == MMC_WRITE_MULTIPLE_BLOCK || cmd->data_blocks > 1) {
 
-        mode = SDHCI_TRNS_BLK_CNT_EN | SDHCI_TRNS_MULTI;
+        mode = SDHC_TRNS_BLK_CNT | SDHC_TRNS_MULTI;
 
-        if (cmd->cmd_flags & SDHCI_AUTO_CMD12 && (cmd->cmd != 53)) {
-            mode |= SDHCI_TRNS_AUTO_CMD12;
+        if (cmd->cmd_flags & BIT(6) && (cmd->cmd != 53)) {
+            mode |= SDHC_TRNS_AUTO_CMD12;
         }
-        else if (cmd->cmd_flags & SDHCI_AUTO_CMD23) {
-            write_long(info->reg_base, cmd->cmd_arg, SDHCI_ARGUMENT2);
+        else if (cmd->cmd_flags & BIT(7)) {
+            write_long(info->reg_base, cmd->cmd_arg, SDHC_ARGUMENT2);
         }
     }
 
-    if (info->data_flags & MMC_DATA_READ)
-        mode |= SDHCI_TRNS_READ;
+    if (info->data_rw == DATA_READ)
+        mode |= SDHC_TRNS_READ;
 
-    write_word(info->reg_base, mode, SDHCI_TRANSFER_MODE);
+    write_word(info->reg_base, mode, SDHC_TRANSFER_MODE);
 }
 
 /**
@@ -583,11 +525,11 @@ static void set_transfer_mode(struct device *dev, struct sdio_cmd *cmd)
  * @param
  * @return
  */
-static void sdhc_reset(uint32_t base, uint8_t reset)
+static void sdhc_reset(struct tsb_sdio_info *info, uint8_t reset)
 {
-    write_byte(base, reset, SDHC_SOFTWARE_RESET);
+    write_byte(info->reg_base, reset, SDHC_SOFTWARE_RESET);
 
-    while (read_byte(base, SDHC_SOFTWARE_RESET) & reset) {
+    while (read_byte(info->reg_base, SDHC_SOFTWARE_RESET) & reset) {
         usleep(DELAY_1_MS);
     };
 }
@@ -600,33 +542,37 @@ static void sdhc_reset(uint32_t base, uint8_t reset)
  * @param
  * @return
  */
-static void sdhc_set_clock(uint32_t base, uint32_t base_clock, uint32_t clock)
+static void sdhc_set_clock(struct tsb_sdio_info *info, uint32_t clock)
 {
     uint16_t clk_val = 0;
     uint16_t retry, div;
 
-    write_word(base, 0, SDHC_CLOCK_CTRL);
+    write_word(info->reg_base, 0, SDHC_CLOCK_CTRL);
 
     for (div = 1; div < SDHC_DIV_MASK; div <<= 1) {
-        if ((base_clock / div) <= clock) {
+        if ((info->base_clock / div) <= clock) {
+            info->cur_clock = 0;
             break;
         }
     }
 
     clk_val |= (div & SDHC_DIV_MASK) << SDHC_DIV_SHIFT;
     clk_val |= SDHC_SD_CLK_EN;
-    write_word(base, clk_val, SDHC_CLOCK_CTRL);
+    write_word(info->reg_base, clk_val, SDHC_CLOCK_CTRL);
     retry = 10;
-    while (!(read_word(base, SDHC_CLOCK_CTRL) & SDHC_CLK_STABLE)) {
+    while (!(read_word(info->reg_base, SDHC_CLOCK_CTRL) & SDHC_CLK_STABLE)) {
         usleep(DELAY_1_MS);
         retry--;
         if (!retry) {
+            info->cur_clock = 0;
             break;
         }
     }
 
     clk_val |= SDHC_SD_CLK_EN;
-    write_word(base, clk_val, SDHC_CLOCK_CTRL);
+    write_word(info->reg_base, clk_val, SDHC_CLOCK_CTRL);
+
+    info->cur_clock = clock;
 }
 
 /**
@@ -641,7 +587,8 @@ static void sdhc_set_clock(uint32_t base, uint32_t base_clock, uint32_t clock)
  * @param info The SDIO driver information.
  * @return None.
  */
-static void sdhc_set_power(uint32_t base, uint8_t mode, uint8_t vdd)
+static void sdhc_set_power(struct tsb_sdio_info *info,
+                           uint8_t mode, uint8_t vdd)
 {
     uint8_t pwr = 0;
 
@@ -659,17 +606,19 @@ static void sdhc_set_power(uint32_t base, uint8_t mode, uint8_t vdd)
             pwr = SDHC_PWR_330;
             break;
         default:
-            lldbg("unsupport vdd \n")
+            lldbg("unsupport vdd \n");
         }
     }
 
     if (pwr == 0) {
-        write_byte(base, 0, SDHC_POWER_CTRL);
+        write_byte(info->reg_base, 0, SDHC_POWER_CTRL);
         vdd = 0;
     } else {
         pwr |= SDHC_PWR_ON;
-        write_byte(base, pwr, SDHC_POWER_CTRL);
+        write_byte(info->reg_base, pwr, SDHC_POWER_CTRL);
     }
+
+    info->cur_power = mode;
 }
 
 /**
@@ -680,11 +629,11 @@ static void sdhc_set_power(uint32_t base, uint8_t mode, uint8_t vdd)
  * @param
  * @return
  */
-static void sdhc_set_bus_width(uint32_t base, uint8_t width)
+static void sdhc_set_bus_width(struct tsb_sdio_info *info, uint8_t width)
 {
     uint8_t ctrl;
 
-    ctrl = read_byte(base, SDHC_HOST_CTRL);
+    ctrl = read_byte(info->reg_base, SDHC_HOST_CTRL);
 
     switch (width) {
     case MMC_BUS_WIDTH_4:
@@ -697,39 +646,130 @@ static void sdhc_set_bus_width(uint32_t base, uint8_t width)
         lldbg("unsupport bus width");
     }
 
-    write_byte(base, ctrl, SDHC_HOST_CTRL);
+    write_byte(info->reg_base, ctrl, SDHC_HOST_CTRL);
+
+    info->cur_bus_width = width;
+}
+
+
+/**
+ * @brief SDIO read data thread
+ *
+ * This is the thread for non-blocking data read.
+ *
+ * @return None.
+ */
+static void *sdhc_data_thread(void *data)
+{
+    struct tsb_sdio_info *info = data;
+    uint32_t fifo, i;
+    uint16_t len;
+    uint8_t *datap;
+
+    while (1) {
+        sem_wait(&info->data_sem);
+        if (info->thread_abort) {
+            /* Exit sdhc_data_thread loop */
+            break;
+        }
+
+        if (info->data_err) {
+            if (info->data_callback) {
+                info->data_callback(1, info->size, info->buffer, info->data_err);
+            } else {
+                sem_post(&info->wait_sem);
+            }
+        }
+
+        datap = info->buffer;
+        len = info->size;
+        if (info->data_rw == DATA_READ) {
+            /* read data from 32 bit fifo to 8 bit buffer */
+            while (len) {
+                fifo = read_long(info->reg_base, SDHC_DATAPORT);
+                for (i = 0; i < 4; i++, datap++, len--) {
+                    *datap = fifo & 0xFF;
+                    fifo >>= 8;
+                }
+            }
+        } else if (info->data_rw == DATA_READ) {
+            /* write data from 8 bit buffer to 32 bit fifo */
+            while (len) {
+                for (i = 0; i < 4; i++, datap++, len--) {
+                    fifo |= *datap;
+                    fifo <<= 8;
+                }
+                write_long(info->reg_base, fifo, SDHC_DATAPORT);
+            }
+        } else {
+            /* error */
+        }
+
+        if (info->data_callback) {
+            info->data_callback(1, info->size, info->buffer, 0);
+        }
+        else {
+            sem_post(&info->wait_sem);
+        }
+    }
+
+    return NULL;
 }
 
 /**
- * @brief Retrieve SDIO resource from driver core.
+ * @brief
  *
- * This function get the SDIO register base and irq number form driver core
- * infrastructure.
- *
- * @param dev The pointer to device structure.
- * @param info The SDIO driver information.
- * @return 0 on success, negative errno on error.
+ * @param
+ * @param
+ * @param
+ * @return
  */
-static int sdhc_extract_resources(struct device *dev,
-                                  struct tsb_sdio_info *info)
+static void sdhc_init(struct tsb_sdio_info *info)
 {
-    struct device_resource *r;
+    uint32_t int_err_mask;
 
-    r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_REGS,
-                                    "reg_base");
-    if (!r) {
-        return -EINVAL;
-    }
-    info->reg_base = r->start;
+    sdhc_reset(info, SDHC_SOFTWARE_RESET );
 
-    r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_IRQ, "irq_sdio");
-    if (!r) {
-        return -EINVAL;
-    }
-    info->sdio_irq = (int)r->start;
+    int_err_mask = SDHC_INT_CMD_CMPLT | \
+                   SDHC_ERR_CMD_TIMEOUT | \
+                   SDHC_ERR_CMD_CRC | \
+                   SDHC_ERR_CMD_END_BIT | \
+                   SDHC_ERR_CMD_INDEX | \
+                   SDHC_INT_TRANS_CMPLT | \
+                   SDHC_ERR_DATA_TIMEOUT | \
+                   SDHC_ERR_DATA_CRC | \
+                   SDHC_ERR_DATA_END_BIT | \
+                   SDHC_INT_READ_READY | \
+                   SDHC_INT_WRITE_READY;
 
-    return 0;
+    /* Enable command interrupts */
+    write_long(info->reg_base, int_err_mask, SDHC_INT_ERR_STATUS_EN);
+    write_long(info->reg_base, int_err_mask, SDHC_INT_ERR_SIGNAL_EN);
+
+    info->cur_clock = 0;
+    sdhc_set_clock(info, info->cur_clock);
+
+    info->cur_power = 0;
+    sdhc_set_power(info, info->cur_power, 18);
+
+    info->cur_bus_width = 0;
+    sdhc_set_bus_width(info, info->cur_bus_width);
 }
+
+/**
+ * @brief
+ *
+ * @param
+ * @param
+ * @param
+ * @return
+ */
+static void sdhc_deinit(struct tsb_sdio_info *info)
+{
+    write_long(info->reg_base, 0, SDHC_INT_ERR_STATUS_EN);
+    write_long(info->reg_base, 0, SDHC_INT_ERR_SIGNAL_EN);
+}
+
 
 /**
  * @brief SDIO device interrupt routing
@@ -745,7 +785,7 @@ static int sdhc_extract_resources(struct device *dev,
 int sdhc_card_detect_irq(int irq, void *context)
 {
     struct tsb_sdio_info *info = device_get_private(sdio_dev);
-    uint8_t value = 0;
+    uint8_t value, card_event;
 
     gpio_mask_irq(irq);
 
@@ -753,30 +793,19 @@ int sdhc_card_detect_irq(int irq, void *context)
 
     if (value && info->inserted) {
         // signal card remove
-        sdhci_writel(info->reg_base, 0, SDHCI_INT_ENABLE);
-        sdhci_writel(info->reg_base, 0, SDHCI_SIGNAL_ENABLE);
-        sdio_disable_bus_power(info);
-        sdio_reg_bit_clr(info->reg_base, CLOCK_SWRST_TIMEOUT_CONTROL,
-                         SD_CLOCK_ENABLE);
+        sdhc_init(info);
         info->inserted = 0;
-        info->card_event = HC_SDIO_CARD_REMOVED;
+        card_event = CARD_REMOVED;
     } else if (!value && !info->inserted) {
-        // signal card insert
-        sdhci_writel(info->reg_base, CMD_INT_MASK | DATA_INT_MASK,
-                     SDHCI_INT_ENABLE);
-        sdhci_writel(info->reg_base, CMD_INT_MASK | DATA_INT_MASK,
-                     SDHCI_SIGNAL_ENABLE);
-        sdio_enable_bus_power(info);
-        sdio_reg_bit_set(info->reg_base, CLOCK_SWRST_TIMEOUT_CONTROL,
-                         SD_CLOCK_ENABLE);
+        sdhc_deinit(info);
         info->inserted = 1;
-        info->card_event = HC_SDIO_CARD_INSERTED;
+        card_event = CARD_INSERTED;
     } else {
-        info->card_event = 0;
+        card_event = 0;
     }
 
-    if (info->card_event && info->callback) {
-        info->callback(info->card_event);
+    if (card_event && info->evt_callback) {
+        info->evt_callback(card_event);
     }
 
     gpio_unmask_irq(irq);
@@ -799,7 +828,7 @@ static int sdhc_host_irq(int irq, void *context)
     uint32_t int_err_status = 0;
 
     info->data_err = 0;
-    info->cmd_err = 0
+    info->cmd_err = 0;
 
     int_err_status = read_long(info->reg_base, SDHC_INT_ERR_STATUS);
 
@@ -810,7 +839,7 @@ static int sdhc_host_irq(int irq, void *context)
     if (int_err_status & (SDHC_INT_WRITE_READY | SDHC_INT_READ_READY)) {
         sem_post(&info->data_sem);
     }
-    
+
     if (int_err_status & SDHC_ERR_CMD_TIMEOUT) {
         lldbg("command err timeout \n");
         info->cmd_err = -1;
@@ -842,146 +871,121 @@ static int sdhc_host_irq(int irq, void *context)
 }
 
 /**
- * @brief SDIO read data thread
+ * @brief
  *
- * This is the thread for non-blocking data read.
- *
- * @return None.
+ * @param
+ * @param
+ * @param
+ * @return
  */
-static void *sdhc_data_thread(void *data)
+static void chip_init(void)
 {
-    struct tsb_sdio_info *info = data;
-    uint32_t fifo, i;
-    uint16_t len;
-    uint8_t *datap;
+    uint32_t sysctl;
 
-    while (1) {
-        sem_wait(&info->data_sem);
-        if (info->thread_abort) {
-            /* Exit sdhc_data_thread loop */
-            break;
-        }
+    /* Enable the 2 clock gating (sdioSysClk/sdioSdClk) */
+    tsb_clk_enable(TSB_CLK_SDIOSYS);
+    tsb_clk_enable(TSB_CLK_SDIOSD);
 
-        if (info->data_err) {
-            if (info->data_callback) {
-                info->data_callback(info->buffer, info->size, info->data_err);
-            } else {
-                sem_post(&info->wait_sem);
-            }
-        } 
+    /* Reset the host controller */
+    tsb_reset(TSB_RST_SDIOSYS);
+    tsb_reset(TSB_RST_SDIOSD);
 
-        datap = info->buffer;
-        len = info->size;
-        if (info->data_rw == DATA_READ) {
-            /* read data from 32 bit fifo to 8 bit buffer */
-            while (len) {
-                fifo = read_long(info->reg_base, SDHC_DATAPORT);
-                for (i = 0; i < 4; i++, datap++, len--) {
-                    *datap = fifo & 0xFF;
-                    fifo >>= 8;
-                }
-            }
-        } else if (info->data_rw == DATA_READ) {
-            /* write data from 8 bit buffer to 32 bit fifo */
-            while (len) {
-                for (i = 0; i < 4; i++, datap++, len--) {
-                    fifo |= *datap; 
-                    fifo <<= 8;
-                }
-                write_long(info->reg_base, fifo, SDHC_DATAPORT);
-            }
-        } else {
-            /* error */
-        }
+    /* Assert the DLL enable */
+    sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
+    sysctl |= DLL_ENABLE;
+    putreg32(SYSCTL_BASE + UHSSD_DLLCTRL, sysctl);
 
-        if (info->data_callback) {
-            info->data_callback(info->buffer, info->size, 0);
-        }
-        else {
-            sem_post(&info->wait_sem);
-        }
+    /* Pull up clk and SDIO data interface pins */
+    bit_set(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
+    bit_set(SYSCTL_BASE, UHSSD_IO4CTRL, SDDATA3_PUENABLE);
+    bit_set(SYSCTL_BASE, UHSSD_IO5CTRL, SDDATA2_PUENABLE);
+    bit_set(SYSCTL_BASE, UHSSD_IO6CTRL, SDDATA1_PUENABLE);
+    bit_set(SYSCTL_BASE, UHSSD_IO7CTRL, SDDATA0_PUENABLE);
+
+    /* Switch the pin share mode for SD Interfaces */
+    tsb_set_pinshare(TSB_PIN_SDIO);
+
+    /* Switch the pin share mode and pin high for GPB2_SD_POWER_EN pin */
+    tsb_set_pinshare(TSB_PIN_GPIO9);
+    gpio_activate(TSB_PIN_GPIO9);
+    gpio_direction_out(GPB2_SD_POWER_EN, 1);
+
+    /* SD CD pin and interrupt handler initialization */
+    tsb_set_pinshare(TSB_PIN_GPIO22);
+    gpio_activate(GPB2_SD_CD);
+    gpio_direction_in(GPB2_SD_CD);
+    set_gpio_triggering(GPB2_SD_CD, IRQ_TYPE_EDGE_BOTH);
+    gpio_irqattach(GPB2_SD_CD, sdhc_card_detect_irq);
+}
+
+/**
+ * @brief
+ *
+ * @param
+ * @param
+ * @param
+ * @return
+ */
+static void chip_deinit(void)
+{
+    uint32_t sysctl;
+
+    /* sdcard detect pin configure */
+    gpio_mask_irq(GPB2_SD_CD);
+    gpio_deactivate(GPB2_SD_CD);
+
+    /* Switch the pin share mode and pin low for GPB2_SD_POWER_EN pin */
+    tsb_set_pinshare(TSB_PIN_GPIO9);
+    gpio_activate(TSB_PIN_GPIO9);
+    gpio_direction_out(GPB2_SD_POWER_EN, 0);
+
+    /* Pull down clk and SDIO data interface pins */
+    bit_clr(SYSCTL_BASE, UHSSD_IO3CTRL, SDCMD_PUENABLE);
+    bit_clr(SYSCTL_BASE, UHSSD_IO4CTRL, SDDATA3_PUENABLE);
+    bit_clr(SYSCTL_BASE, UHSSD_IO5CTRL, SDDATA2_PUENABLE);
+    bit_clr(SYSCTL_BASE, UHSSD_IO6CTRL, SDDATA1_PUENABLE);
+    bit_clr(SYSCTL_BASE, UHSSD_IO7CTRL, SDDATA0_PUENABLE);
+
+    /* turn off sd host controoler dll */
+    sysctl = getreg32(SYSCTL_BASE + UHSSD_DLLCTRL);
+    sysctl &= DLL_ENABLE;
+    putreg32(SYSCTL_BASE + UHSSD_DLLCTRL, sysctl);
+
+    /* stop sd host controller clock */
+    tsb_clk_disable(TSB_CLK_SDIOSYS);
+    tsb_clk_disable(TSB_CLK_SDIOSD);
+}
+
+/**
+ * @brief Retrieve SDIO resource from driver core.
+ *
+ * This function get the SDIO register base and irq number form driver core
+ * infrastructure.
+ *
+ * @param dev The pointer to device structure.
+ * @param info The SDIO driver information.
+ * @return 0 on success, negative errno on error.
+ */
+static int sdhc_extract_resources(struct device *dev,
+                                  struct tsb_sdio_info *info)
+{
+    struct device_resource *r;
+
+    r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_REGS,
+                                    "reg_base");
+    if (!r) {
+        return -EINVAL;
     }
+    info->reg_base = r->start;
 
-    return NULL;
+    r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_IRQ, "irq_sdio");
+    if (!r) {
+        return -EINVAL;
+    }
+    info->sdhc_irq = (int)r->start;
+
+    return 0;
 }
-
-/**
- * @brief
- *
- * @param
- * @param
- * @param
- * @return
- */
-static void sdhc_init(uint32_t base)
-{
-    uint32_t int_err_mask;
-    
-    sdhc_reset(base, SDHCI_RESET_ALL )
-
-    int_err_mask =  CMD_INT_MASK | CMD_ERR_MASK |
-                    DATA_INT_MASK | DATA_ERR_MASK |
-                    DATA_R_INT_MASK | DATA_W_INT_MASK; 
-
-    /* Enable command interrupts */
-    write_long(info->reg_base, int_err_mask, SDHCI_INT_ENABLE);
-    write_long(info->reg_base, int_err_mask, SDHCI_SIGNAL_ENABLE);
-}
-
-/**
- * @brief
- *
- * @param
- * @param
- * @param
- * @return
- */
-static void sdhc_deinit(uint32_t base)
-{
-    /* Disable command interrupts */
-    /*sdio_reg_bit_clr(info->reg_base, INT_ERR_STATUS_EN,
-                     CARD_INTERRUPT_STAT_EN);
-    sdio_reg_bit_clr(info->reg_base, INT_ERR_SIGNAL_EN,
-                     CARD_INTERRUPT_EN);
-    */
-    sdhci_writel(info->reg_base, 0, SDHCI_INT_ENABLE);
-    sdhci_writel(info->reg_base, 0, SDHCI_SIGNAL_ENABLE);
-
-    sdio_reg_bit_clr(info->reg_base, CLOCK_SWRST_TIMEOUT_CONTROL,
-                     SD_CLOCK_ENABLE);
-
-    sdio_disable_bus_power(info);
-
-    info->card_event = 0;
-}
-
-
-/**
- * @brief
- *
- * @param
- * @param
- * @param
- * @return
- */
-static void sdhc_set_ios(struct tsb_sdio_info *info, struct sdio_ios *ios)
-{
-    /* reset signal enable reg when power off*/
-
-    /* set clock */
-    sdhc_set_clock(info->reg_base, info->base_clock, ios->clock);
-    
-    /* set power */
-    sdhc_set_power(info->reg_base, ios->power_mode, ios->vdd);
-
-    /* set bus width */
-    sdhc_set_bus_width(info->reg_base, ios->bus_width);
-
-    /* set timing */
-    ios->timing;
-    
-}
-
 
 /**
  * @brief Get capabilities of SD host controller
@@ -1004,10 +1008,10 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
     /* timing */
     cap->caps |= MMC_CAP_MMC_HIGHSPEED |
                  MMC_CAP_SD_HIGHSPEED;
-    
+
     /* bus width */
     cap->caps |= MMC_CAP_4_BIT_DATA;
-    
+
     /* driver type */
     cap->caps |= MMC_CAP_DRIVER_TYPE_A |
                  MMC_CAP_DRIVER_TYPE_C |
@@ -1021,12 +1025,12 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
     cap_reg = read_long(info->reg_base, SDHC_CAPABILITIES);
     cap_reg = (cap_reg >> SDHC_CAP_MAX_BLK_SHIFT) & SDHC_CAP_MAX_BLK_MASK;
     cap->max_blk_size = SDHC_BASE_BLK * (1 << cap_reg);
-    
+
     cap->max_blk_count = SDHC_MAX_BLK_COUNT;
 
     /* base clock */
     clk_reg = read_word(info->reg_base, SDHC_CAPABILITIES);
-    info->base_clock = (clk_reg >> SDHC_CAP_BASE_CLK_SHIFT) &
+    info->base_clock = ((clk_reg >> SDHC_CAP_BASE_CLK_SHIFT) &
                         SDHC_CAP_BASE_CLK_MASK);
     info->base_clock *= ONE_MHZ;
 
@@ -1051,116 +1055,18 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
 
-    uint32_t uhs_mode_sel = 0;
-
-    //lldbg("ios->power_mode =  \n");
-
-    /* Set clock */
-    if (sdio_clock_supply(ios, info)) {
-        return -EINVAL;
+    if (info->cur_clock != ios->clock) {
+        sdhc_set_clock(info, ios->clock);
     }
 
-    /* Set vdd */
-    /* Not support to change vdd since board uses jumper to change power */
-
-    /* set bus mode */
-    /* Not support */
-
-    /* Set power mode */
-    switch (ios->power_mode) {
-    case HC_SDIO_POWER_OFF:
-        sdio_disable_bus_power(info);
-        break;
-    case HC_SDIO_POWER_UP:
-    case HC_SDIO_POWER_ON:
-        sdio_enable_bus_power(info);
-        break;
-    case HC_SDIO_POWER_UNDEFINED:
-    default:
-        //lldbg("ios->power_mode ERR \n");
-        return -EINVAL;
+    if (info->cur_power != ios->power_mode) {
+        sdhc_set_power(info, ios->power_mode, ios->vdd);
     }
 
-    /* Set bus width */
-    if (sdio_change_bus_width(ios, info)) {
-        return -EINVAL;
-    } /*else { // workaround for first CMD17 error
-
-        if (ios->bus_width == HC_SDIO_BUS_WIDTH_4) {
-            struct sdio_cmd cmd;
-            uint32_t resp[4];
-
-            cmd.cmd = 100;
-            cmd.cmd_flags = 0x15;
-            cmd.cmd_type = 0x01;
-            cmd.cmd_arg = 0;
-            cmd.resp = resp;
-            cmd.data_cmd = 1;
-            cmd.data_blocks = 0;
-            cmd.data_blksz = 0;
-            cmd.data_blksz = 0;
-
-            tsb_sdio_send_cmd(dev, &cmd);
-        }
-    }*/
-
-    /* Set timing */
-    switch (ios->timing) {
-    case HC_SDIO_TIMING_LEGACY:
-    case HC_SDIO_TIMING_MMC_HS:
-    case HC_SDIO_TIMING_SD_HS:
-    case HC_SDIO_TIMING_UHS_SDR12:
-        uhs_mode_sel = SDR12;
-        break;
-    case HC_SDIO_TIMING_UHS_SDR25:
-        uhs_mode_sel = SDR25;
-        break;
-    case HC_SDIO_TIMING_UHS_SDR50:
-        uhs_mode_sel = SDR50;
-        break;
-    case HC_SDIO_TIMING_UHS_SDR104:
-        uhs_mode_sel = SDR104;
-        break;
-    case HC_SDIO_TIMING_UHS_DDR50:
-        uhs_mode_sel = DDR50;
-        break;
-    case HC_SDIO_TIMING_MMC_DDR52:
-    case HC_SDIO_TIMING_MMC_HS200:
-    case HC_SDIO_TIMING_MMC_HS400:
-    default:
-        //lldbg("ios->timing ERR \n");
-        return -EINVAL;
-    }
-    sdio_reg_field_set(info->reg_base, AUTOCMD12ERST_HOST_CTRL2,
-                       UHS_MODE_SEL_MASK,
-                       uhs_mode_sel << UHS_MODE_SEL_SHIFT);
-
-    /* Set signal voltage */
-    /* Not support to change signal voltage since board uses jumper to change
-     * signal_voltage */
-
-    /* Set driver type */
-    switch (ios->drv_type) {
-    case HC_SDIO_SET_DRIVER_TYPE_A:
-        sdio_reg_bit_set(info->reg_base, CAPABILITIES_HI,
-                         DRIVER_TYPEA_SUPPORT);
-        break;
-    case HC_SDIO_SET_DRIVER_TYPE_C:
-        sdio_reg_bit_set(info->reg_base, CAPABILITIES_HI,
-                         DRIVER_TYPEC_SUPPORT);
-        break;
-    case HC_SDIO_SET_DRIVER_TYPE_D:
-        sdio_reg_bit_set(info->reg_base, CAPABILITIES_HI,
-                         DRIVER_TYPED_SUPPORT);
-        break;
-    case HC_SDIO_SET_DRIVER_TYPE_B:
-        break; // alex
-    default:
-        //lldbg("ios->drv_type ERR \n");
-        return -EINVAL;
+    if (info->cur_bus_width != ios->bus_width) {
+        sdhc_set_bus_width(info, ios->bus_width);
     }
 
-    //lldbg("tsb_sdio_set_ios() OK \n");
     return 0;
 }
 
@@ -1190,7 +1096,7 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
      * prepare data information
      */
     cmd_prepare(info, cmd->cmd);
-   
+
     /* Wait for CMD & DAT Line unused */
     mask = SDHC_CMD_INHIBIT;
     if (cmd->data_cmd) {
@@ -1210,10 +1116,10 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
      * prepare data information
      */
     if (cmd->data_cmd) {
-        write_word(info->reg_base, cmd->data_blksz, SDHCI_BLOCK_SIZE);
-        write_word(info->reg_base, cmd->data_blocks, SDHCI_BLOCK_COUNT);
+        write_word(info->reg_base, cmd->data_blksz, SDHC_BLOCK_SIZE);
+        write_word(info->reg_base, cmd->data_blocks, SDHC_BLOCK_COUNT);
 
-        write_byte(info->reg_base, 0x03, SDHCI_TIMEOUT_CONTROL);
+        write_byte(info->reg_base, 0x03, SDHC_TIMEOUT_CTRL);
 
         lldbg(">> data: size(%d), blocks(%d) \n", cmd->data_blksz, cmd->data_blocks);
     }
@@ -1222,31 +1128,31 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
     write_long(info->reg_base, cmd->cmd_arg, SDHC_ARGUMENT);
 
     /* Set transfer mode */
-    set_transfer_mode(dev, cmd);
+    set_transfer_mode(info, cmd);
 
     /* prepare command reg */
     if (!(cmd->cmd_flags & MMC_RSP_PRESENT))
-        cmd_flags = SDHCI_CMD_RESP_NONE;
+        cmd_flags = SDHC_CMD_RESP_NO;
     else if (cmd->cmd_flags & MMC_RSP_136)
-        cmd_flags = SDHCI_CMD_RESP_LONG;
+        cmd_flags = SDHC_CMD_RESP_136;
     else if (cmd->cmd_flags & MMC_RSP_BUSY)
-        cmd_flags = SDHCI_CMD_RESP_SHORT_BUSY;
+        cmd_flags = SDHC_CMD_RESP_48B;
     else
-        cmd_flags = SDHCI_CMD_RESP_SHORT;
+        cmd_flags = SDHC_CMD_RESP_48;
 
     if (cmd->cmd_flags & MMC_RSP_CRC)
-        cmd_flags |= SDHCI_CMD_CRC;
+        cmd_flags |= SDHC_CMD_CRC;
     if (cmd->cmd_flags & MMC_RSP_OPCODE)
-        cmd_flags |= SDHCI_CMD_INDEX;
+        cmd_flags |= SDHC_CMD_INDEX;
 
     if (cmd->data_cmd) {
-        cmd_flags |= SDHCI_CMD_DATA;
+        cmd_flags |= SDHC_CMD_DATA;
     }
 
-    lldbg("cmd = 0x%04x \n", SDHCI_MAKE_CMD(cmd->cmd, cmd_flags));
+    lldbg("cmd = 0x%04x \n", SDHC_MAKE_CMD(cmd->cmd, cmd_flags));
 
-    sdhci_writew(info->reg_base, SDHCI_MAKE_CMD(cmd->cmd, cmd_flags),
-                 SDHCI_COMMAND);
+    write_word(info->reg_base, SDHC_MAKE_CMD(cmd->cmd, cmd_flags),
+               SDHC_COMMAND);
 
     //lldbg("SDHCI_BLOCK_SIZE = 0x%04x \n", sdhci_readw(info->reg_base, SDHCI_BLOCK_SIZE));
     //lldbg("SDHCI_BLOCK_COUNT = 0x%04x \n", sdhci_readw(info->reg_base, SDHCI_BLOCK_COUNT));
@@ -1260,30 +1166,18 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
 
     /* Wait for Command Complete Int register */
     sem_wait(&info->cmd_sem);
-    usleep(COMMAND_INTERVAL);
 
     if (info->cmd_err) {
         ret = info->cmd_err;
     } else {
-        
+        if (cmd_flags & SDHC_CMD_RESP_136) {
+            convert_rsp_136(info->reg_base, cmd->resp);
+        } else {
+            *cmd->resp = read_long(info->reg_base, SDHC_RESPONSE0);
+        }
     }
 
-    //lldbg("after wait... \n");
-    //sdio_dump_registers(info);
-
-/*    if (cmd->cmd == 9) {
-        cmd->resp[0] = cpu_to_be32(info->resp[0]);
-        cmd->resp[1] = cpu_to_be32(info->resp[1]);
-        cmd->resp[2] = cpu_to_be32(info->resp[2]);
-        cmd->resp[3] = cpu_to_be32(info->resp[3]);
-    } else {*/
-        cmd->resp[0] = info->resp[0];
-        cmd->resp[1] = info->resp[1];
-        cmd->resp[2] = info->resp[2];
-        cmd->resp[3] = info->resp[3];
-//    }
-
-    return info->sdio_int_err_status;
+    return ret;
 }
 
 /**
@@ -1309,7 +1203,7 @@ static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
     if (transfer->callback) {
         info->buffer = transfer->data;
         info->size = transfer->blksz;
-        info->callback = transfer->callback;
+        info->data_callback = transfer->callback;
     } else {
         sem_wait(&info->wait_sem);
         ret = info->data_err;
@@ -1342,12 +1236,12 @@ static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
     if (transfer->callback) { /* non-blocking returns */
         info->buffer = transfer->data;
         info->size = transfer->blksz;
-        info->callback = transfer->callback;
+        info->data_callback = transfer->callback;
     } else {
         sem_wait(&info->wait_sem);
         ret = info->data_err;
     }
-    
+
     return ret;
 }
 
@@ -1371,11 +1265,11 @@ static int tsb_sdio_attach_callback(struct device *dev,
     }
     info = device_get_private(dev);
 
-    info->callback = callback;
-    if (info->callback) {
+    info->evt_callback = callback;
+    if (info->evt_callback) {
         /* Turn on card detect interrupt */
         gpio_unmask_irq(GPB2_SD_CD);
-        
+
         /* Get card insert or remove status */
         removed = gpio_get_value(GPB2_SD_CD);
 
@@ -1390,15 +1284,15 @@ static int tsb_sdio_attach_callback(struct device *dev,
         }
 
         if (!card_event) {
-            info->callback(card_event);
+            info->evt_callback(card_event);
         }
-        
+
     } else {
         info->inserted = CARD_NONE;
         /* Turn off card detect interrupt */
         gpio_mask_irq(GPB2_SD_CD);
     }
-    
+
     return 0;
 }
 
@@ -1419,7 +1313,6 @@ static int tsb_sdio_dev_open(struct device *dev)
     struct tsb_sdio_info *info = NULL;
     irqstate_t flags;
     int ret = 0;
-    uint8_t value = 0;
 
     //lldbg("tsb_sdio_dev_open() \n");
     if (!dev || !device_get_private(dev)) {
@@ -1437,14 +1330,14 @@ static int tsb_sdio_dev_open(struct device *dev)
     info->flags |= SDIO_FLAG_OPEN;
 
     info->thread_abort = false;
-    ret = pthread_create(&info->write_thread, NULL, data_thread, info);
+    ret = pthread_create(&info->data_thread, NULL, sdhc_data_thread, info);
     if (ret) {
         goto err_irqrestore;
     }
 
-    sdhc_init();
+    sdhc_init(info);
     /* turn on sd host controller interrupt */
-    up_enable_irq(info->sdio_irq);
+    up_enable_irq(info->sdhc_irq);
 
 err_irqrestore:
     irqrestore(flags);
@@ -1599,7 +1492,7 @@ static void tsb_sdio_dev_remove(struct device *dev)
     info->flags = 0;
 
     flags = irqsave();
-    
+
     irq_detach(info->sdhc_irq);
 
     sem_destroy(&info->wait_sem);
