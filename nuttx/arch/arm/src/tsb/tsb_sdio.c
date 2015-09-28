@@ -416,6 +416,8 @@ static void set_transfer_mode(struct tsb_sdio_info *info, struct sdio_cmd *cmd)
 {
     uint16_t mode = 0;
 
+    lldbg("set_transfer_mode() + \n");
+
     if (cmd->cmd == MMC_READ_MULTIPLE_BLOCK ||
         cmd->cmd == MMC_WRITE_MULTIPLE_BLOCK || cmd->data_blocks > 1) {
 
@@ -433,6 +435,8 @@ static void set_transfer_mode(struct tsb_sdio_info *info, struct sdio_cmd *cmd)
         mode |= SDHC_TRNS_READ;
 
     putreg16(mode, info->reg_base + SDHC_TRANSFER_MODE);
+
+    lldbg("set_transfer_mode() - \n");
 }
 
 /**
@@ -445,11 +449,15 @@ static void set_transfer_mode(struct tsb_sdio_info *info, struct sdio_cmd *cmd)
  */
 static void sdhc_reset(struct tsb_sdio_info *info, uint8_t reset)
 {
+    lldbg("sdhc_reset() + \n");
+    
     putreg8(reset, info->reg_base + SDHC_SOFTWARE_RESET);
 
     while (getreg8(info->reg_base + SDHC_SOFTWARE_RESET) & reset) {
         usleep(DELAY_1_MS);
     };
+    
+    lldbg("sdhc_reset() - \n");
 }
 
 /**
@@ -464,6 +472,8 @@ static void sdhc_set_clock(struct tsb_sdio_info *info, uint32_t clock)
 {
     uint16_t clk_val = 0;
     uint16_t retry, div;
+
+    lldbg("sdhc_set_clock() + %d \n", clock);
 
     putreg16(0, info->reg_base + SDHC_CLOCK_CTRL);
 
@@ -491,6 +501,8 @@ static void sdhc_set_clock(struct tsb_sdio_info *info, uint32_t clock)
     putreg16(clk_val, info->reg_base + SDHC_CLOCK_CTRL);
 
     info->cur_clock = clock;
+
+    lldbg("sdhc_set_clock() - \n");
 }
 
 /**
@@ -509,6 +521,8 @@ static void sdhc_set_power(struct tsb_sdio_info *info,
                            uint8_t mode, uint8_t vdd)
 {
     uint8_t pwr = 0;
+
+    lldbg("sdhc_set_power () + %d, %d \n", mode, vdd);
 
     if (mode != MMC_POWER_OFF) {
         switch (1 << vdd) {
@@ -534,6 +548,8 @@ static void sdhc_set_power(struct tsb_sdio_info *info,
 
     putreg8(pwr, info->reg_base + SDHC_POWER_CTRL);
     info->cur_power = mode;
+
+    lldbg("sdhc_set_power () - \n");
 }
 
 /**
@@ -547,6 +563,8 @@ static void sdhc_set_power(struct tsb_sdio_info *info,
 static void sdhc_set_bus_width(struct tsb_sdio_info *info, uint8_t width)
 {
     uint8_t ctrl;
+
+    lldbg("sdhc_set_bus_width() + %d \n", width);
 
     ctrl = getreg8(info->reg_base + SDHC_HOST_CTRL);
 
@@ -564,6 +582,8 @@ static void sdhc_set_bus_width(struct tsb_sdio_info *info, uint8_t width)
     putreg8(ctrl, info->reg_base + SDHC_HOST_CTRL);
 
     info->cur_bus_width = width;
+
+    lldbg("sdhc_set_bus_width() - \n");
 }
 
 
@@ -583,6 +603,9 @@ static void *sdhc_data_thread(void *data)
 
     while (1) {
         sem_wait(&info->data_sem);
+
+        lldbg("sdhc_data_thread() got sem \n");
+        
         if (info->thread_abort) {
             /* Exit sdhc_data_thread loop */
             break;
@@ -643,6 +666,8 @@ static void sdhc_init(struct tsb_sdio_info *info)
 {
     uint32_t int_err_mask;
 
+    lldbg("sdhc_init() + \n");
+
     sdhc_reset(info, SDHC_SOFTWARE_RESET );
 
     int_err_mask = SDHC_INT_CMD_CMPLT | \
@@ -669,6 +694,8 @@ static void sdhc_init(struct tsb_sdio_info *info)
 
     info->cur_bus_width = 0;
     sdhc_set_bus_width(info, info->cur_bus_width);
+
+    lldbg("sdhc_init() - \n");
 }
 
 /**
@@ -681,8 +708,12 @@ static void sdhc_init(struct tsb_sdio_info *info)
  */
 static void sdhc_deinit(struct tsb_sdio_info *info)
 {
+    lldbg("sdhc_deinit() + \n");
+    
     putreg32(0, info->reg_base + SDHC_INT_ERR_STATUS_EN);
     putreg32(0, info->reg_base + SDHC_INT_ERR_SIGNAL_EN);
+
+    lldbg("sdhc_deinit() - \n");
 }
 
 
@@ -700,23 +731,25 @@ static void sdhc_deinit(struct tsb_sdio_info *info)
 int sdhc_card_detect_irq(int irq, void *context)
 {
     struct tsb_sdio_info *info = device_get_private(sdio_dev);
-    uint8_t value, card_event;
+    uint8_t removed, card_event;
 
+    lldbg("sdhc_card_detect_irq() + \n");
+    
     gpio_mask_irq(irq);
 
-    value = gpio_get_value(GPB2_SD_CD); // 1: no card, 0: card inserted.
+    removed = gpio_get_value(GPB2_SD_CD); // 1: no card, 0: card inserted.
 
-    if (value && info->inserted) {
+    if (removed && info->inserted) {
         // signal card remove
         sdhc_init(info);
         info->inserted = 0;
         card_event = CARD_REMOVED;
-    } else if (!value && !info->inserted) {
+    } else if (!removed && !info->inserted) {
         sdhc_deinit(info);
         info->inserted = 1;
         card_event = CARD_INSERTED;
     } else {
-        card_event = 0;
+        card_event = CARD_NONE;
     }
 
     if (card_event && info->evt_callback) {
@@ -724,6 +757,8 @@ int sdhc_card_detect_irq(int irq, void *context)
     }
 
     gpio_unmask_irq(irq);
+
+    lldbg("sdhc_card_detect_irq() - \n");
 
     return 0;
 }
@@ -741,6 +776,8 @@ static int sdhc_host_irq(int irq, void *context)
 {
     struct tsb_sdio_info *info = device_get_private(sdio_dev);
     uint32_t int_err_status = 0;
+
+    lldbg("sdhc_host_irq() + \n");
 
     info->data_err = 0;
     info->cmd_err = 0;
@@ -782,6 +819,8 @@ static int sdhc_host_irq(int irq, void *context)
 
     putreg32(int_err_status, info->reg_base + SDHC_INT_ERR_STATUS);
 
+    lldbg("sdhc_host_irq() - \n");
+
     return 0;
 }
 
@@ -795,6 +834,8 @@ static int sdhc_host_irq(int irq, void *context)
  */
 static void chip_init(void)
 {
+    lldbg("chip_init() + \n");
+    
     /* Enable the 2 clock gating (sdioSysClk/sdioSdClk) */
     tsb_clk_enable(TSB_CLK_SDIOSYS);
     tsb_clk_enable(TSB_CLK_SDIOSD);
@@ -827,6 +868,8 @@ static void chip_init(void)
     gpio_direction_in(GPB2_SD_CD);
     set_gpio_triggering(GPB2_SD_CD, IRQ_TYPE_EDGE_BOTH);
     gpio_irqattach(GPB2_SD_CD, sdhc_card_detect_irq);
+
+    lldbg("chip_init() - \n");
 }
 
 /**
@@ -839,6 +882,8 @@ static void chip_init(void)
  */
 static void chip_deinit(void)
 {
+    lldbg("chip_deinit() + \n");
+    
     /* sdcard detect pin configure */
     gpio_mask_irq(GPB2_SD_CD);
     gpio_deactivate(GPB2_SD_CD);
@@ -861,6 +906,8 @@ static void chip_deinit(void)
     /* stop sd host controller clock */
     tsb_clk_disable(TSB_CLK_SDIOSYS);
     tsb_clk_disable(TSB_CLK_SDIOSD);
+
+    lldbg("chip_deinit() - \n");
 }
 
 /**
@@ -879,7 +926,7 @@ static int sdhc_extract_resources(struct device *dev,
     struct device_resource *r;
 
     r = device_resource_get_by_name(dev, DEVICE_RESOURCE_TYPE_REGS,
-                                    "reg_base");
+                                    "sdio_reg_base");
     if (!r) {
         return -EINVAL;
     }
@@ -908,7 +955,8 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
     struct tsb_sdio_info *info = device_get_private(dev);
     uint32_t cap_reg;
     uint16_t clk_reg;
-    //lldbg("tsb_sdio_get_capability() \n");
+
+    lldbg("tsb_sdio_get_capability() + \n");
 
     cap->caps = 0;
 
@@ -946,6 +994,7 @@ static int tsb_sdio_get_capability(struct device *dev, struct sdio_cap *cap)
     info->timeout_clock = (clk_reg & SDHC_CAP_TIMEOUT_MASK) *
                           (clk_reg & SDHC_CAP_TO_UINT_MASK) ? ONE_MHZ : ONE_KHZ;
 
+    lldbg("tsb_sdio_get_capability() - \n");
     return 0;
 }
 
@@ -962,6 +1011,8 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
 
+    lldbg("tsb_sdio_set_ios() + \n");
+
     if (info->cur_clock != ios->clock) {
         sdhc_set_clock(info, ios->clock);
     }
@@ -973,6 +1024,8 @@ static int tsb_sdio_set_ios(struct device *dev, struct sdio_ios *ios)
     if (info->cur_bus_width != ios->bus_width) {
         sdhc_set_bus_width(info, ios->bus_width);
     }
+
+    lldbg("tsb_sdio_set_ios() - \n");
 
     return 0;
 }
@@ -1083,6 +1136,8 @@ static int tsb_sdio_send_cmd(struct device *dev, struct sdio_cmd *cmd)
         }
     }
 
+    lldbg("tsb_sdio_send_cmd() + \n");
+
     return ret;
 }
 
@@ -1100,7 +1155,8 @@ static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
 {
     struct tsb_sdio_info *info = device_get_private(dev);
     int ret = 0;
-    //lldbg("tsb_sdio_write() \n");
+
+    lldbg("tsb_sdio_write() + \n");
 
     if (info->data_rw != DATA_WRITE) {
         return -EBUSY;
@@ -1115,6 +1171,8 @@ static int tsb_sdio_write(struct device *dev, struct sdio_transfer *transfer)
         ret = info->data_err;
     }
 
+    lldbg("tsb_sdio_write() - \n");
+    
     return ret;
 }
 
@@ -1148,6 +1206,7 @@ static int tsb_sdio_read(struct device *dev, struct sdio_transfer *transfer)
         ret = info->data_err;
     }
 
+    lldbg("tsb_sdio_read()- \n");
     return ret;
 }
 
@@ -1164,7 +1223,8 @@ static int tsb_sdio_attach_callback(struct device *dev,
     struct tsb_sdio_info *info = NULL;
     uint32_t removed;
     uint8_t card_event;
-    //lldbg("tsb_sdio_attach_callback() \n");
+    
+    lldbg("tsb_sdio_attach_callback() + \n");
 
     if (!dev || !device_get_private(dev)) {
         return -EINVAL;
@@ -1172,8 +1232,11 @@ static int tsb_sdio_attach_callback(struct device *dev,
     info = device_get_private(dev);
 
     info->evt_callback = callback;
+    
     if (info->evt_callback) {
+        lldbg("got evt_callback \n");
         /* Turn on card detect interrupt */
+        gpio_clear_interrupt(GPB2_SD_CD);
         gpio_unmask_irq(GPB2_SD_CD);
 
         /* Get card insert or remove status */
@@ -1182,23 +1245,29 @@ static int tsb_sdio_attach_callback(struct device *dev,
         if (!info->inserted && !removed ) {
             card_event = CARD_INSERTED;
             info->inserted = 1;
+            lldbg("card inserted event \n");
         } else if (info->inserted && removed) {
             card_event = CARD_REMOVED;
             info->inserted = 0;
+            lldbg("card removed event \n");
         } else {
             card_event = CARD_NONE;
         }
 
-        if (!card_event) {
+        if (card_event) {
             info->evt_callback(card_event);
+            lldbg("send card event %d \n", card_event);
         }
 
+        info->evt_callback = callback;
     } else {
         info->inserted = CARD_NONE;
         /* Turn off card detect interrupt */
         gpio_mask_irq(GPB2_SD_CD);
     }
 
+    lldbg("tsb_sdio_attach_callback() - \n");
+    
     return 0;
 }
 
@@ -1220,7 +1289,8 @@ static int tsb_sdio_dev_open(struct device *dev)
     irqstate_t flags;
     int ret = 0;
 
-    //lldbg("tsb_sdio_dev_open() \n");
+    lldbg("tsb_sdio_dev_open() + \n");
+    
     if (!dev || !device_get_private(dev)) {
         return -EINVAL;
     }
@@ -1245,6 +1315,8 @@ static int tsb_sdio_dev_open(struct device *dev)
     /* turn on sd host controller interrupt */
     up_enable_irq(info->sdhc_irq);
 
+    lldbg("tsb_sdio_dev_open() - \n");
+
 err_irqrestore:
     irqrestore(flags);
 
@@ -1265,7 +1337,8 @@ static void tsb_sdio_dev_close(struct device *dev)
     struct tsb_sdio_info *info = NULL;
     irqstate_t flags;
 
-    //lldbg("tsb_sdio_dev_close() \n");
+    lldbg("tsb_sdio_dev_close() + \n");
+    
     if (!dev || !device_get_private(dev)) {
         return;
     }
@@ -1290,6 +1363,8 @@ static void tsb_sdio_dev_close(struct device *dev)
         pthread_join(info->data_thread, NULL);
     }
 
+    lldbg("tsb_sdio_dev_close() - \n");
+    
 err_irqrestore:
     irqrestore(flags);
 }
@@ -1310,7 +1385,8 @@ static int tsb_sdio_dev_probe(struct device *dev)
     struct tsb_sdio_info *info = NULL;
     irqstate_t flags;
     int ret = 0;
-    //lldbg("tsb_sdio_dev_probe() \n");
+
+    lldbg("tsb_sdio_dev_probe() + \n");
 
     if (!dev) {
         return -EINVAL;
@@ -1323,31 +1399,46 @@ static int tsb_sdio_dev_probe(struct device *dev)
 
     chip_init();
 
+    lldbg("a \n");
+    
     ret = sdhc_extract_resources(dev, info);
     if (ret) {
         goto err_free_info;
+        lldbg("1 \n");
     }
+
+    lldbg("b \n");
 
     ret = sem_init(&info->cmd_sem, 0, 0);
     if (ret) {
         goto err_free_info;
+        lldbg("2 \n");
     }
+
+    lldbg("c \n");
 
     ret = sem_init(&info->data_sem, 0, 0);
     if (ret) {
         goto err_destroy_cmd_sem;
+        lldbg("3 \n");
     }
+
+    lldbg("d \n");
 
     ret = sem_init(&info->wait_sem, 0, 0);
     if (ret) {
         goto err_destroy_data_sem;
+        lldbg("4 \n");
     }
+
+    lldbg("e \n");
 
     flags = irqsave();
 
     ret = irq_attach(info->sdhc_irq, sdhc_host_irq);
     if (ret) {
         goto err_destroy_wait_sem;
+        lldbg("5 \n");
     }
 
     sdio_dev = dev;
@@ -1355,6 +1446,8 @@ static int tsb_sdio_dev_probe(struct device *dev)
     device_set_private(dev, info);
 
     irqrestore(flags);
+
+    lldbg("tsb_sdio_dev_probe() - \n");
 
     return 0;
 
@@ -1368,6 +1461,7 @@ err_destroy_cmd_sem:
 err_free_info:
     free(info);
 
+    lldbg("tsb_sdio_dev_probe() err - \n");
     return ret;
 }
 
