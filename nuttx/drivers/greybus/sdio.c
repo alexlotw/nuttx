@@ -41,20 +41,44 @@
 
 #include "sdio-gb.h"
 
-#define GB_SDIO_VERSION_MAJOR 0
-#define GB_SDIO_VERSION_MINOR 1
+#define GB_SDIO_VERSION_MAJOR   0
+#define GB_SDIO_VERSION_MINOR   1
+
+#define MAX_BLOCK_SIZE_0        512
+#define MAX_BLOCK_SIZE_1        1024
+#define MAX_BLOCK_SIZE_2        2048
 
 /**
  * SDIO protocol private information.
  */
 struct gb_sdio_info {
     /** CPort from greybus */
-    uint16_t cport;
+    unsigned int    cport;
     /** SDIO driver handle */
-    struct device *dev;
+    struct device   *dev;
 };
 
 static struct gb_sdio_info *info = NULL;
+
+/**
+ * @brief Return the valid max block length value
+ *
+ * The Max Block Length only allows 512, 1024 and 2048.
+ *
+ * @param value The data size to valid.
+ * @return The valided max block length
+ */
+static uint16_t valid_max_sd_block_length(uint16_t value)
+{
+    if (value < MAX_BLOCK_SIZE_0) {
+        return 0;
+    } else if (value < MAX_BLOCK_SIZE_1) {
+        return MAX_BLOCK_SIZE_0;
+    } else if (value < MAX_BLOCK_SIZE_2) {
+        return MAX_BLOCK_SIZE_1;
+    }
+    return MAX_BLOCK_SIZE_2;
+}
 
 /**
  * @brief Event callback function for SDIO host controller driver
@@ -67,21 +91,16 @@ static int event_callback(uint8_t event)
     struct gb_operation *operation;
     struct gb_sdio_event_request *request;
 
-    //lldbg("event_callback() \n");
-    
     operation = gb_operation_create(info->cport, GB_SDIO_TYPE_EVENT,
                                     sizeof(*request));
     if (!operation) {
-        return -EIO;
+        return -ENOMEM;
     }
-    
+
     request = gb_operation_get_request_payload(operation);
     request->event = event;
 
     gb_operation_send_request(operation, NULL, false);
-
-    //lldbg("event_callback sent out 0x%x \n", request->event);
-    
     gb_operation_destroy(operation);
 
     return 0;
@@ -99,8 +118,6 @@ static int event_callback(uint8_t event)
 static uint8_t gb_sdio_protocol_version(struct gb_operation *operation)
 {
     struct gb_sdio_proto_version_response *response = NULL;
-
-    //lldbg("gb_sdio_protocol_version() \n");
 
     response = gb_operation_alloc_response(operation, sizeof(*response));
     if (!response) {
@@ -126,13 +143,12 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
 {
     struct gb_sdio_get_capabilities_response *response;
     struct sdio_cap cap;
+    uint16_t max_data_size;
     int ret;
 
-    //lldbg("gb_sdio_protocol_get_capabilities() \n");
-    
     ret = device_sdio_get_capabilities(info->dev, &cap);
     if (ret) {
-        return GB_OP_UNKNOWN_ERROR;
+        return gb_errno_to_op_result(ret);
     }
 
     response = gb_operation_alloc_response(operation, sizeof(*response));
@@ -140,26 +156,30 @@ static uint8_t gb_sdio_protocol_get_capabilities(struct gb_operation *operation)
         return GB_OP_NO_MEMORY;
     }
 
-    /**
-     * Currently, the protocol buffer size must be under 1024 bytes, with the
-     * buffer information, therefore only 512 bytes is allowed for one block.
+    /*
+     * The host Greybus uses max_blk_count * max_blk_size to request data,
+     * we must restrict the size under max protocol response package size.
      */
-    if (cap.max_blk_count * cap.max_blk_size > 1024) {
-        cap.max_blk_count = 1;
-        cap.max_blk_size = 512;
+    max_data_size = GB_MAX_PAYLOAD_SIZE -
+                    sizeof(struct gb_sdio_transfer_response);
+    max_data_size = valid_max_sd_block_length(max_data_size);
+    if (!max_data_size) {
+        return GB_OP_INVALID;
+    }
+    if (cap.max_blk_count * cap.max_blk_size > max_data_size ) {
+        if (cap.max_blk_size > max_data_size) {
+            cap.max_blk_size = max_data_size;
+            cap.max_blk_count = 1;
+        } else {
+            cap.max_blk_count = max_data_size / cap.max_blk_size;
+        }
     }
 
-    cap.ocr = 0xFFFFFFFF;
     response->caps = cpu_to_le32(cap.caps);
     response->ocr = cpu_to_le32(cap.ocr);
     response->max_blk_count = cpu_to_le16(cap.max_blk_count);
     response->max_blk_size = cpu_to_le16(cap.max_blk_size);
 
-    //lldbg("get_capabilities: caps: 0x%x \n", response->caps);
-    //lldbg("get_capabilities: ocr: 0x%x \n", response->ocr);
-    //lldbg("get_capabilities: max_blk_count: %d \n", response->max_blk_count);
-    //lldbg("get_capabilities: max_blk_size: %d \n", response->max_blk_size);
-    
     return GB_OP_SUCCESS;
 }
 
@@ -177,8 +197,6 @@ static uint8_t gb_sdio_protocol_set_ios(struct gb_operation *operation)
     struct sdio_ios ios;
     int ret;
 
-    //lldbg("gb_sdio_protocol_set_ios() \n");
-
     request = gb_operation_get_request_payload(operation);
 
     if (gb_operation_get_request_payload_size(operation) < sizeof(*request)) {
@@ -194,22 +212,11 @@ static uint8_t gb_sdio_protocol_set_ios(struct gb_operation *operation)
     ios.timing = request->timing;
     ios.signal_voltage = request->signal_voltage;
     ios.drv_type = request->drv_type;
-
-    //lldbg("set_ios: clock: %d \n", ios.clock);
-    //lldbg("set_ios: vdd: 0x%x \n", ios.vdd);
-    //lldbg("set_ios: bus_mode: 0x%x \n", ios.bus_mode);
-    //lldbg("set_ios: power_mode: 0x%x \n", ios.power_mode);
-    //lldbg("set_ios: bus_width: %d \n", ios.bus_width);
-    //lldbg("set_ios: signal_voltage: 0x%x \n", ios.signal_voltage);
-    //lldbg("set_ios: drv_type: 0x%x \n", ios.drv_type);
-    
     ret = device_sdio_set_ios(info->dev, &ios);
     if (ret) {
-        //lldbg("device_sdio_set_ios ERR \n");
-        return GB_OP_UNKNOWN_ERROR;
+        return gb_errno_to_op_result(ret);
     }
 
-    //lldbg("device_sdio_set_ios OK \n");
     return GB_OP_SUCCESS;
 }
 
@@ -229,8 +236,6 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
     uint32_t resp[4];
     int i, ret;
 
-    //lldbg("gb_sdio_protocol_command() ++++++++++++++++++++++++++\n");
-
     request = gb_operation_get_request_payload(operation);
 
     if (gb_operation_get_request_payload_size(operation) < sizeof(*request)) {
@@ -238,53 +243,47 @@ static uint8_t gb_sdio_protocol_command(struct gb_operation *operation)
         return GB_OP_INVALID;
     }
 
-    for (i = 0; i < 4; i++) {
-        resp[i] = 0;
-    }
-
     cmd.cmd = request->cmd;
     cmd.cmd_flags = request->cmd_flags;
     cmd.cmd_type = request->cmd_type;
     cmd.cmd_arg = le32_to_cpu(request->cmd_arg);
     cmd.resp = resp;
-
-    //lldbg("cmd:cmd = %d \n", cmd.cmd);
-    //lldbg("cmd:cmd_flags = 0x%x \n", cmd.cmd_flags);
-    //lldbg("cmd:cmd_type = 0x%x \n", cmd.cmd_type);
-    //lldbg("cmd:cmd_arg = 0x%x \n", cmd.cmd_arg);
-    
     ret = device_sdio_send_cmd(info->dev, &cmd);
-    if (ret == -EINVAL) {
-        //lldbg("device_sdio_send_cmd ERR \n");
-        return GB_OP_UNKNOWN_ERROR;
-    }
-    if (ret == -ETIMEDOUT) {
-        //lldbg("device_sdio_send_cmd TIMEOUT \n");
+    if (ret && ret != -ETIMEDOUT) {
+        /*
+         * The SD host driver will return EINVAL or ETIMEDOUT, the host AP mmc
+         * core send some unsupport command to detect sdio, sd or mmc card, so
+         * the time out is not an error.
+         */
+        return gb_errno_to_op_result(ret);
     }
 
     response = gb_operation_alloc_response(operation, sizeof(*response));
     if (!response) {
-        //lldbg("gb_operation_alloc_response ERR \n");
         return GB_OP_NO_MEMORY;
     }
 
     /*
-     * Per the discussion for the order of the 32 bits response
-     * value, the host kernel treats order of response as SD
-     * spec defined, for example:
+     * Per the discussion for the order of bits in response with Lunix MMC core,
      *
-     * bit 31: out of range
-     * bit 8 : ready for data
+     * To return R1 and other 32 bits response, the format is,
+     * resp[0] = Response bit 39 ~ 8
      *
-     * The SD controller driver must keep this order in the
-     * returned resp.
+     * Check bit 31 is "out of range", and bit 8 is "ready for data".
+     *
+     * For R2 and other 136 bits response,
+     * resp[0] = Response bit 127 ~ 96
+     * resp[1] = Response bit 95 ~ 64
+     * resp[2] = Response bit 63 ~ 32
+     * resp[3] = Response bit 31 ~ 1, bit 0 is reserved.
+     *
+     * The SD host controller spec has different definition for R2, the driver
+     * must conver it to those bit position.
      */
     for (i = 0; i < 4; i++) {
         response->resp[i] = cpu_to_le32(resp[i]);
-        //lldbg("response->resp[%d] = 0x%x \n", i, resp[i]);
     }
 
-    //lldbg("gb_sdio_protocol_command() OK -------------------------- \n");
     return GB_OP_SUCCESS;
 }
 
@@ -304,17 +303,12 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
     struct sdio_transfer transfer;
     int ret;
 
-    //lldbg("gb_sdio_protocol_transfer() ================================= \n");
-
     request = gb_operation_get_request_payload(operation);
 
     if (gb_operation_get_request_payload_size(operation) < sizeof(*request)) {
         gb_error("dropping short message\n");
         return GB_OP_INVALID;
     }
-
-    //lldbg("request->data_blocks = %d \n", request->data_blocks);
-    //lldbg("request->data_blksz = %d \n", request->data_blksz);
 
     transfer.blocks = le16_to_cpu(request->data_blocks);
     transfer.blksz = le16_to_cpu(request->data_blksz);
@@ -328,7 +322,7 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
         transfer.data = request->data;
         ret = device_sdio_write(info->dev, &transfer);
         if (ret) {
-            return GB_OP_UNKNOWN_ERROR;
+            return gb_errno_to_op_result(ret);
         }
         response = gb_operation_alloc_response(operation, sizeof(*response));
         if (!response) {
@@ -336,37 +330,23 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
         }
         response->data_blocks = cpu_to_le16(transfer.blocks);
         response->data_blksz = cpu_to_le16(transfer.blksz);
-    }
-    else if (request->data_flags & GB_SDIO_DATA_READ) {
+    } else if (request->data_flags & GB_SDIO_DATA_READ) {
         response = gb_operation_alloc_response(operation, sizeof(*response) +
                                                           transfer.blocks *
                                                           transfer.blksz);
         if (!response) {
             return GB_OP_NO_MEMORY;
         }
-        //lldbg("start to read... \n");
         transfer.data = response->data;
         ret = device_sdio_read(info->dev, &transfer);
         if (ret) {
-            //lldbg("device_sdio_read ERR \n");
-            return GB_OP_UNKNOWN_ERROR;
+            return gb_errno_to_op_result(ret);
         }
-        //lldbg("device_sdio_read OK \n");
-
-        /*{
-            uint32_t *datap = (uint32_t *)transfer.data;
-
-            lldbg("******** data 0x%08x, 0x%08x \n", datap[0], datap[1]);
-        }*/
-        
         response->data_blocks = cpu_to_le16(transfer.blocks);
         response->data_blksz = cpu_to_le16(transfer.blksz);
+    } else {
+        return GB_OP_INVALID;
     }
-    else {
-        return GB_OP_UNKNOWN_ERROR;
-    }
-
-    //lldbg("gb_sdio_protocol_transfer()------------------------------ \n");
 
     return GB_OP_SUCCESS;
 }
@@ -383,8 +363,6 @@ static uint8_t gb_sdio_protocol_transfer(struct gb_operation *operation)
 static int gb_sdio_init(unsigned int cport)
 {
     int ret;
-
-    //lldbg("gb_sdio_init() \n");
 
     info = zalloc(sizeof(*info));
     if (info == NULL) {
@@ -404,8 +382,6 @@ static int gb_sdio_init(unsigned int cport)
         goto err_close_device;
     }
 
-    //lldbg("gb_sdio_init() success \n");
-        
     return 0;
 
 err_close_device:
@@ -426,11 +402,14 @@ err_free_info:
  */
 static void gb_sdio_exit(unsigned int cport)
 {
+    DEBUGASSERT(cport == info->cport);
+
     device_sdio_attach_callback(info->dev, NULL);
 
     device_close(info->dev);
 
     free(info);
+    info = NULL;
 }
 
 /**
@@ -448,7 +427,7 @@ static struct gb_operation_handler gb_sdio_handlers[] = {
 static struct gb_driver sdio_driver = {
     .init              = gb_sdio_init,
     .exit              = gb_sdio_exit,
-    .op_handlers       = (struct gb_operation_handler *)gb_sdio_handlers,
+    .op_handlers       = gb_sdio_handlers,
     .op_handlers_count = ARRAY_SIZE(gb_sdio_handlers),
 };
 
