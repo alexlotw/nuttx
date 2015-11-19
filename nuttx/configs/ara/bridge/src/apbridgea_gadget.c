@@ -65,6 +65,7 @@
 #include <nuttx/greybus/greybus.h>
 #include <nuttx/unipro/unipro.h>
 #include <arch/byteorder.h>
+#include <arch/board/csi.h>
 #include <arch/board/common_gadget.h>
 #include <arch/board/apbridgea_gadget.h>
 #include <nuttx/wdog.h>
@@ -160,6 +161,10 @@
 #define APBRIDGE_WOREQUEST_CPORT_RESET          (0x05)
 #define APBRIDGE_ROREQUEST_LATENCY_TAG_EN       (0x06)
 #define APBRIDGE_ROREQUEST_LATENCY_TAG_DIS      (0x07)
+
+/* Camera CSI control requests */
+#define APBRIDGE_CAMERA_CSI_START   (0x10)
+#define APBRIDGE_CAMERA_CSI_STOP    (0x11)
 
 #define TIMEOUT_IN_MS           300
 #define ONE_SEC_IN_MSEC         1000
@@ -1446,6 +1451,22 @@ static int usbclass_setup(struct usbdevclass_driver_s *driver,
                             ret = 0;
                             lldbg("disable tagging for cportid %d\n", value);
                         }
+                    }
+                } else if (ctrl->req == APBRIDGE_CAMERA_CSI_START) {
+                    struct csi_control *host_ctrl;
+                    struct csi_control target;
+                    ret = -EINVAL;
+                    if (!(ctrl->type & USB_DIR_IN)) {
+                        host_ctrl = (struct csi_control *) req->buf;
+                        target.data_type = host_ctrl->data_type;
+                        target.lane_num = host_ctrl->lane_num;
+                        target.word_count = le32_to_cpu(host_ctrl->word_count);
+                        ret = camera_csi_start(&target);
+                    }
+                } else if (ctrl->req == APBRIDGE_CAMERA_CSI_START) {
+                    ret = -EINVAL;
+                    if (!(ctrl->type & USB_DIR_IN)) {
+                        ret = camera_csi_stop();
                     }
                 } else {
                     usbtrace(TRACE_CLSERROR
