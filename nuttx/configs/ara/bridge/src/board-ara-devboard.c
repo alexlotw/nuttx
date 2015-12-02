@@ -42,6 +42,7 @@
 #include <nuttx/i2c.h>
 #include <nuttx/gpio/tca64xx.h>
 #include <nuttx/device_lights.h>
+#include <nuttx/device_camera.h>
 
 #include "tsb_scm.h"
 #include "up_arch.h"
@@ -172,6 +173,17 @@ static struct device devices[] = {
         .resource_count = ARRAY_SIZE(sdio_board_resources),
     },
 #endif
+#ifdef CONFIG_ARA_BRIDGE_HAVE_CAMERA
+#ifdef CONFIG_APB_CAMERA //bsq adds +
+    {
+        .type           = DEVICE_TYPE_CAMERA_HW,
+        .name           = "camera",
+        .desc           = "Camera Device Driver",
+        .id             = 0,
+    },
+#endif //bsq adds -     
+#endif
+
 };
 
 static struct device_table bdb_device_table = {
@@ -205,6 +217,13 @@ static void bdb_driver_register(void)
     extern struct device_driver sdio_board_driver;
     device_register_driver(&sdio_board_driver);
 #endif
+#ifdef CONFIG_ARA_BRIDGE_HAVE_CAMERA
+#ifdef CONFIG_APB_CAMERA //bsq adds +
+    extern struct device_driver camera_driver;
+    device_register_driver(&camera_driver);
+#endif //bsq adds -   
+#endif
+
 }
 #endif
 
@@ -218,7 +237,7 @@ static void board_display_init(void)
 static void board_camera_init(void)
 {
 #ifdef CONFIG_ARA_BRIDGE_HAVE_CAMERA
-    camera_init();
+    /* camera_init(); */
 #endif
 }
 

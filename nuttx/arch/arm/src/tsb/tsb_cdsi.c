@@ -35,6 +35,8 @@
 #include "up_arch.h"
 #include "tsb_scm.h"
 
+struct cdsi_dev *grx_csdi_dev; //bsq adds
+
 void cdsi_write(struct cdsi_dev *dev, uint32_t addr, uint32_t v)
 {
     putreg32(v, dev->base + addr);
@@ -55,6 +57,7 @@ static struct cdsi_dev *cdsi_initialize(int cdsi, int tx)
 
     dev->tx = tx;
     dev->base = cdsi == TSB_CDSI0 ? CDSI0_BASE : CDSI1_BASE;
+    
     tsb_clk_enable(cdsi == TSB_CDSI0 ? TSB_CLK_CDSI0_REF : TSB_CLK_CDSI1_REF);
     if (tx) {
         if (cdsi == TSB_CDSI0) {
@@ -74,13 +77,17 @@ static struct cdsi_dev *cdsi_initialize(int cdsi, int tx)
             tsb_clk_enable(TSB_CLK_CDSI0_RX_APB);
             tsb_reset(TSB_RST_CDSI0_RX);
             tsb_reset(TSB_RST_CDSI0_RX_AIO);
+            
+            grx_csdi_dev = dev;
+            
         } else {
             tsb_clk_enable(TSB_CLK_CDSI1_RX_SYS);
             tsb_clk_enable(TSB_CLK_CDSI1_RX_APB);
             tsb_reset(TSB_RST_CDSI1_RX);
-            tsb_reset(TSB_RST_CDSI1_RX_AIO);
+            tsb_reset(TSB_RST_CDSI1_RX_AIO);            
         }
-    }
+    }    
+    
     return dev;
 }
 
@@ -166,4 +173,38 @@ struct cdsi_dev *csi_initialize(struct camera_sensor *sensor, int cdsi, int tx)
 void csi_uninitialize(struct cdsi_dev *dev)
 {
     cdsi_uninitialize(dev);
+}
+
+struct cdsi_dev *init_csi_rx(int cdsi, int tx)
+{
+    struct cdsi_dev *cdsidev;
+    
+#if 1
+    cdsidev = grx_csdi_dev;
+    if (!cdsidev) {
+        printf("[%s]csdi_init fails. cdsidev: 0x%x\n",__func__, cdsidev);
+        return NULL;
+    }
+    
+    printf("[%s]cdsidev: 0x%x\n",__func__, cdsidev);
+#else
+    cdsidev = cdsi_initialize(cdsi, tx);
+    if (!cdsidev) {
+        printf("[%s]csdi_init fails. cdsidev: 0x%x\n",__func__, cdsidev);
+        return NULL;
+    }
+    printf("[%s]cdsidev: 0x%x\n",__func__, cdsidev);
+    printf("[%s]cdsidev->base: 0x%x\n",__func__, cdsidev->base);
+
+    printf("[%s]tx: 0x%x\n",__func__, tx);
+    printf("[%s]cdsi: 0x%x\n",__func__, cdsi);
+
+#endif
+    
+    return cdsidev;
+}
+
+void *deinit_csi_rx(struct cdsi_dev *dev)
+{    
+    cdsi_uninitialize(dev);    
 }

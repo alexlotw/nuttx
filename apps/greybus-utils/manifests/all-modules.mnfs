@@ -120,16 +120,18 @@ class = 11
 ; DISPLAY (0x0c) automatically set up by SVC to use CPort 16
 
 ; Skipping CAMERA (0x0d)
+; using vibrator for testing
+[cport-descriptor 11]
+bundle = 13
+protocol = 0x0d
+
+[bundle-descriptor 13]
+class = 13
 
 ; Skipping SENSOR (0x0e)
 
 ; VIBRATOR protocol on CPort 11
-[cport-descriptor 11]
-bundle = 16
-protocol = 0x10
-
-[bundle-descriptor 16]
-class = 16
+; skipping VIBRATOR for camera
 
 ; LOOPBACK protocol on CPort 12
 [cport-descriptor 12]

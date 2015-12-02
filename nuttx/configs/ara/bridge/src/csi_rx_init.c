@@ -113,7 +113,7 @@
 void ov5645_csi_init(struct cdsi_dev *dev)
 {
     uint32_t rdata0;
-    uint32_t rdata1;
+    //uint32_t rdata1;
 
     printf("ov5645_csi_init callback function for CSI-2 rx\n");
 
@@ -225,6 +225,8 @@ void ov5645_csi_init(struct cdsi_dev *dev)
         rdata0 = cdsi_read(dev, CDSI0_CDSIRX_LPRX_STATE_INT_STAT_OFFS);
     }
     printf("First LPRX_STATE_INT: %d\n", rdata0);
+
+#if 0 //bsq removed +
     /* Start CDSIRX */
     cdsi_write(dev, CDSI0_CDSIRX_START_OFFS, CDSI0_CDSIRX_START_VAL);
 
@@ -244,6 +246,8 @@ void ov5645_csi_init(struct cdsi_dev *dev)
     cdsi_write(dev, CDSI0_CDSIRX_DSI_LPTX_MODE_OFFS, CDSIRX_DSI_LPTX_MODE_VAL);
     cdsi_write(dev, CDSI0_CDSIRX_ADDRESS_CONFIG_OFFS,
                CDSI0_CDSIRX_ADDRESS_CONFIG_VAL);
+#endif //bsq removed -
+
 }
 
 struct camera_sensor ov5645_sensor = {
